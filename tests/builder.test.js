@@ -45,7 +45,7 @@ test('worker keeps GitHub credentials server-side', async () => {
   assert.match(worker, /headers\.authorization = `Bearer \$\{env\.GITHUB_TOKEN\}`/);
   assert.match(worker, /validateAgainstCatalog/);
   assert.match(worker, /downloadFirmware/);
-  assert.match(worker, /object.httpMetadata?.contentDisposition/);
+  assert.match(worker, /object\.httpMetadata\?\.contentDisposition/);
   assert.match(worker, /source_ref/);
   assert.match(worker, /src.*platform/);
   assert.match(worker, /src.*config/);
