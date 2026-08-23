@@ -6,6 +6,9 @@ test('demo catalog contains the builder surface', async () => {
   const catalog = JSON.parse(await readFile(new URL('../data/catalog.json', import.meta.url)));
   assert.equal(catalog.mode, 'demo');
   assert.ok(catalog.targets.some((target) => target.target === 'KAKUTEH7'));
+  assert.ok(catalog.targets.some((target) => target.target === 'HDZERO_HALO'));
+  assert.ok(catalog.targets.some((target) => target.target === 'MAMBAF722_2022A'));
+  assert.ok(catalog.targets.some((target) => target.target === 'HGLRCF722MINI'));
   assert.ok(catalog.releases.some((release) => release.label === 'KAACK 4.5.3 / V19' && release.ref === 'KAACK-4.5.0'));
   assert.ok(catalog.options.osdProtocols.some((option) => option.value.includes('USE_OSD_HD')));
 });
