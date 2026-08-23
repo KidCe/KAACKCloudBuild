@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 test('demo catalog contains the builder surface', async () => {
+  const index = await readFile(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(index, /version-disclaimer/);
+  assert.match(index, /official Betaflight/);
   const catalog = JSON.parse(await readFile(new URL('../data/catalog.json', import.meta.url)));
   assert.equal(catalog.mode, 'demo');
   assert.ok(catalog.targets.some((target) => target.target === 'KAKUTEH7'));
@@ -30,6 +33,10 @@ test('workflow validates user-controlled flags before make', async () => {
   assert.match(workflow, /upload-artifact@v4/);
   assert.match(workflow, /FIRMWARE_REPOSITORY/);
   assert.match(workflow, /approved KAACK fork/);
+  assert.match(workflow, /firmware_stem=/);
+  assert.match(workflow, /DIGIOSD/);
+  assert.match(workflow, /content-disposition/);
+  assert.match(workflow, /firmwareFileName/);
 });
 
 test('worker keeps GitHub credentials server-side', async () => {
@@ -38,6 +45,7 @@ test('worker keeps GitHub credentials server-side', async () => {
   assert.match(worker, /headers\.authorization = `Bearer \$\{env\.GITHUB_TOKEN\}`/);
   assert.match(worker, /validateAgainstCatalog/);
   assert.match(worker, /downloadFirmware/);
+  assert.match(worker, /object.httpMetadata?.contentDisposition/);
   assert.match(worker, /source_ref/);
   assert.match(worker, /src.*platform/);
   assert.match(worker, /src.*config/);
@@ -54,4 +62,7 @@ test('builder remembers general options and applies racing defaults', async () =
   assert.match(app, /USE_TELEMETRY_CRSF/);
   assert.match(app, /USE_DSHOT/);
   assert.match(app, /USE_OSD_HD/);
+  assert.match(app, /not the same as Betaflight 4\.5\.3/);
+  assert.match(app, /older Betaflight 4\.5 line/);
+  assert.match(app, /all fixes from official Betaflight 4\.5\.3/);
 });

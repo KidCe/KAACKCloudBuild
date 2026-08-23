@@ -157,8 +157,50 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p output
-          find firmware/obj -maxdepth 1 -type f \( -name '*.hex' -o -name '*.uf2' \) -size +0c -exec cp {} output/ \;
-          test -n "$(find output -maxdepth 1 -type f -name '*.hex' -size +0c -print -quit)" || { echo "No non-empty HEX firmware artifact found"; exit 1; }
+          mapfile -t flags < <(printf '%s' "${FLAGS_JSON}" | jq -r '.[]')
+          slug() { printf '%s' "$1" | tr '[:lower:]' '[:upper:]' | sed -E 's/^KAACK[-_]?//; s/[^A-Z0-9.-]+/-/g; s/^-+//; s/-+$//'; }
+          flag_slug() {
+            case "$1" in
+              USE_SERIALRX_CRSF) echo CRSF ;;
+              USE_SERIALRX_SBUS) echo SBUS ;;
+              USE_SERIALRX_FPORT) echo FPORT ;;
+              USE_SERIALRX_GHST) echo GHOST ;;
+              USE_TELEMETRY_CRSF) echo TCRSF ;;
+              USE_TELEMETRY_SMARTPORT) echo TSMARTPORT ;;
+              USE_TELEMETRY_MAVLINK) echo TMAVLINK ;;
+              USE_DSHOT) echo DSHOT ;;
+              USE_MULTISHOT) echo MULTI ;;
+              USE_ONESHOT) echo ONESHOT ;;
+              USE_PWM_OUTPUT) echo PWM ;;
+              USE_OSD_HD) echo DIGIOSD ;;
+              USE_OSD_SD) echo ANALOGOSD ;;
+              USE_GPS) echo GPS ;;
+              USE_LED_STRIP) echo LED ;;
+              USE_LED_STRIP_64) echo LED64 ;;
+              USE_VTX) echo VTX ;;
+              USE_CAMERA_CONTROL) echo CAMCTRL ;;
+              USE_SDCARD) echo SDCARD ;;
+              USE_RACE_PRO) echo RACEPRO ;;
+              USE_SERVOS) echo SERVOS ;;
+              USE_MAG) echo MAG ;;
+              *) printf '%s' "$1" | sed -E 's/^USE_//; s/_//g' ;;
+            esac
+          }
+          flag_tokens=()
+          for flag in "${flags[@]}"; do flag_tokens+=("$(flag_slug "${flag}")"); done
+          flags_slug="$(IFS=_; printf '%s' "${flag_tokens[*]}")"
+          [[ -n "${flags_slug}" ]] || flags_slug="NOFLAGS"
+          firmware_stem="KAACK_$(slug "${VERSION}")_$(slug "${REQUEST_TARGET}")_${flags_slug}"
+          hex_source="$(find firmware/obj -maxdepth 1 -type f -name '*.hex' -size +0c -print -quit)"
+          test -n "${hex_source}" || { echo "No non-empty HEX firmware artifact found"; exit 1; }
+          hex_filename="${firmware_stem}.hex"
+          cp "${hex_source}" "output/${hex_filename}"
+          uf2_source="$(find firmware/obj -maxdepth 1 -type f -name '*.uf2' -size +0c -print -quit)"
+          uf2_filename=""
+          if [[ -n "${uf2_source}" ]]; then
+            uf2_filename="${firmware_stem}.uf2"
+            cp "${uf2_source}" "output/${uf2_filename}"
+          fi
           source_commit="$(git -C firmware rev-parse HEAD)"
           config_commit="$(git -C firmware/src/config rev-parse HEAD 2>/dev/null || echo external-config-master)"
           build_key="${BUILD_KEY:-${BUILD_ID}}"
@@ -173,10 +215,12 @@ jobs:
             --arg sourceCommit "${source_commit}" \
             --arg configCommit "${config_commit}" \
             --arg builtAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg firmwareFileName "${hex_filename}" \
+            --arg uf2FileName "${uf2_filename}" \
             --argjson flags "${FLAGS_JSON}" \
             --arg buildKey "${build_key}" \
             --arg releaseName "${release_name}" \
-            '{buildId:$buildId,buildKey:$buildKey,releaseName:$releaseName,repository:$repository,version:$version,sourceRef:$sourceRef,configRef:$configRef,target:$target,flags:$flags,sourceCommit:$sourceCommit,configCommit:$configCommit,builtAt:$builtAt}' > output/manifest.json
+            '{buildId:$buildId,buildKey:$buildKey,releaseName:$releaseName,repository:$repository,version:$version,sourceRef:$sourceRef,configRef:$configRef,target:$target,flags:$flags,firmwareFileName:$firmwareFileName,uf2FileName:(if $uf2FileName == "" then null else $uf2FileName end),sourceCommit:$sourceCommit,configCommit:$configCommit,builtAt:$builtAt}' > output/manifest.json
           sha256sum output/* > output/SHA256SUMS
 
       - name: Upload firmware artifact
@@ -202,7 +246,14 @@ jobs:
           endpoint="https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com"
           while IFS= read -r firmware_file; do
             extension="${firmware_file##*.}"
-            aws s3 cp "${firmware_file}" "s3://${R2_BUCKET_NAME}/firmware/${BUILD_ID}.${extension}" --endpoint-url "${endpoint}"
+            filename="$(basename "${firmware_file}")"
+            content_type="application/octet-stream"
+            [[ "${extension}" = "hex" ]] && content_type="text/plain"
+            aws s3 cp "${firmware_file}" "s3://${R2_BUCKET_NAME}/firmware/${BUILD_ID}.${extension}" \
+              --endpoint-url "${endpoint}" \
+              --content-type "${content_type}" \
+              --content-disposition "attachment; filename=${filename}" \
+              --cache-control "public, max-age=31536000, immutable"
           done < <(find output -maxdepth 1 -type f \( -name '*.hex' -o -name '*.uf2' \) -size +0c -print)
           aws s3 cp output/manifest.json "s3://${R2_BUCKET_NAME}/firmware/${BUILD_ID}.json" --endpoint-url "${endpoint}"
           aws s3 cp output/SHA256SUMS "s3://${R2_BUCKET_NAME}/firmware/${BUILD_ID}.SHA256SUMS" --endpoint-url "${endpoint}"

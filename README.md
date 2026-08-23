@@ -51,7 +51,13 @@ When R2 is not configured, the Worker proxies the GitHub Actions artifact ZIP th
 
 The Worker never accepts arbitrary shell arguments. The live source catalog is generated from classic `src/platform/*/target/*` targets plus `src/config/configs/*/config.h` targets from the checked-out config submodule or the release-specific pinned config ref. Releases are mapped to allow-listed refs, and flags are normalized and restricted to uppercase `USE_*` defines. The workflow validates them again before calling `make`. This keeps the community-facing label `KAACK 4.5.3 / V19` separate from the technical source ref `KAACK-4.5.0`.
 
-For the first live test, the artifact download is the GitHub Actions artifact ZIP. For the direct firmware path, create an R2 bucket, add the `FIRMWARE_BUCKET` binding in `worker/wrangler.toml`, set the `R2_BUCKET_NAME` Actions variable plus the R2/Cloudflare secrets, and let the workflow publish the verified `.hex`/`.uf2`, `manifest.json` and checksum. The Worker then serves `/api/builds/{id}/download`. GitHub artifacts remain short-lived build outputs, not the permanent firmware cache.
+For the first live test, the artifact download is the GitHub Actions artifact ZIP. For the direct firmware path, activate R2, create a bucket named `kaack-firmware`, uncomment the `FIRMWARE_BUCKET` binding in `worker/wrangler.toml`, and add these repository settings:
+
+- Secret `R2_ACCESS_KEY_ID`: the R2 S3 Access Key ID.
+- Secret `R2_SECRET_ACCESS_KEY`: the R2 S3 Secret Access Key.
+- Variable `R2_BUCKET_NAME`: `kaack-firmware`.
+
+Use an R2 API token with **Object Read & Write** scoped only to this bucket. The workflow publishes the verified descriptive `.hex`/`.uf2` filename, `manifest.json` and checksum under the build ID. The Worker then serves the firmware directly from `/api/builds/{id}/download`; GitHub artifacts remain the audit/fallback copy rather than the normal user download.
 
 ## Reference-build verification
 

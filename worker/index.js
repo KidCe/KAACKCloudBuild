@@ -180,7 +180,7 @@ async function downloadFirmware(env, id) {
   if (env.FIRMWARE_BUCKET) {
     for (const extension of ["hex", "uf2"]) {
       const object = await env.FIRMWARE_BUCKET.get(`firmware/${id}.${extension}`);
-      if (object) return new Response(object.body, { headers: { "content-type": extension === "hex" ? "text/plain; charset=utf-8" : "application/octet-stream", "content-disposition": `attachment; filename=kaack-${id}.${extension}`, etag: object.httpEtag || "" } });
+      if (object) return new Response(object.body, { headers: { "content-type": object.httpMetadata?.contentType || (extension === "hex" ? "text/plain; charset=utf-8" : "application/octet-stream"), "content-disposition": object.httpMetadata?.contentDisposition || `attachment; filename=kaack-${id}.${extension}`, etag: object.httpEtag || "" } });
     }
     return json({ error: "Firmware file is not available yet" }, 404);
   }

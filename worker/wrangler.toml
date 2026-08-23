@@ -16,7 +16,8 @@ GITHUB_REF = "main"
 # CATALOG_SOURCE_REF = "KAACK-4.5.0"
 # PUBLIC_API_BASE_URL = "https://kaack-cloud-builder-api.example.workers.dev"
 
-# Enable after creating the bucket and adding the matching R2 binding.
+# Enable after activating R2, creating the bucket and adding the matching
+# R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY GitHub secrets.
 # [[r2_buckets]]
 # binding = "FIRMWARE_BUCKET"
 # bucket_name = "kaack-firmware"
