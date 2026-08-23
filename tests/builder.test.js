@@ -21,7 +21,8 @@ test('workflow validates user-controlled flags before make', async () => {
   assert.match(workflow, /make uf2 CONFIG/);
   assert.match(workflow, /config_ref/);
   assert.match(workflow, /compatible pinned config ref/);
-  assert.match(workflow, /No HEX firmware artifact found/);
+  assert.match(workflow, /No non-empty HEX firmware artifact found/);
+  assert.match(workflow, /-size \+0c/);
   assert.match(workflow, /limonspb\/betaflight/);
   assert.match(workflow, /upload-artifact@v4/);
   assert.match(workflow, /FIRMWARE_REPOSITORY/);

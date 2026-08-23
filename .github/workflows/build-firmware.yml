@@ -141,8 +141,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p output
-          find firmware/obj -maxdepth 1 -type f \( -name '*.hex' -o -name '*.uf2' \) -exec cp {} output/ \;
-          test -n "$(find output -maxdepth 1 -type f -name '*.hex' -print -quit)" || { echo "No HEX firmware artifact found"; exit 1; }
+          find firmware/obj -maxdepth 1 -type f \( -name '*.hex' -o -name '*.uf2' \) -size +0c -exec cp {} output/ \;
+          test -n "$(find output -maxdepth 1 -type f -name '*.hex' -size +0c -print -quit)" || { echo "No non-empty HEX firmware artifact found"; exit 1; }
           source_commit="$(git -C firmware rev-parse HEAD)"
           config_commit="$(git -C firmware/src/config rev-parse HEAD 2>/dev/null || echo external-config-master)"
           jq -n \
@@ -183,6 +183,6 @@ jobs:
           while IFS= read -r firmware_file; do
             extension="${firmware_file##*.}"
             aws s3 cp "${firmware_file}" "s3://${R2_BUCKET_NAME}/firmware/${BUILD_ID}.${extension}" --endpoint-url "${endpoint}"
-          done < <(find output -maxdepth 1 -type f \( -name '*.hex' -o -name '*.uf2' \) -print)
+          done < <(find output -maxdepth 1 -type f \( -name '*.hex' -o -name '*.uf2' \) -size +0c -print)
           aws s3 cp output/manifest.json "s3://${R2_BUCKET_NAME}/firmware/${BUILD_ID}.json" --endpoint-url "${endpoint}"
           aws s3 cp output/SHA256SUMS "s3://${R2_BUCKET_NAME}/firmware/${BUILD_ID}.SHA256SUMS" --endpoint-url "${endpoint}"
