@@ -7,6 +7,7 @@ test('catalog fixture contains the builder surface', async () => {
   assert.match(index, /version-disclaimer/);
   assert.match(index, /official Betaflight/);
   assert.match(index, /kidce\.github\.io\/KidCe-Configurator/);
+  assert.match(index, /id="target"[^>]+list="targetList"/);
   const catalog = JSON.parse(await readFile(new URL('../data/catalog.json', import.meta.url)));
   assert.equal(catalog.mode, 'fixture');
   assert.ok(catalog.targets.some((target) => target.target === 'KAKUTEH7'));
@@ -89,4 +90,6 @@ test('builder remembers general options and applies racing defaults', async () =
   assert.doesNotMatch(app, /demoBuild|createDemoDownload|NOT FLASHABLE/);
   assert.match(app, /Live builder unavailable/);
   assert.match(app, /Download ZIP artifact/);
+  assert.match(app, /DEFAULT_API_BASE/);
+  assert.match(app, /targetList/);
 });

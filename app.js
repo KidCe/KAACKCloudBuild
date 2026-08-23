@@ -1,5 +1,6 @@
 const config = window.KAACK_CONFIG || {};
-const apiBase = (config.apiBase || "").replace(/\/$/, "");
+const DEFAULT_API_BASE = "https://kaack-cloud-builder-api.n-kitsikoudis.workers.dev";
+const apiBase = (config.apiBase || DEFAULT_API_BASE).replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const GENERAL_OPTIONS_KEY = "kaack-cloud-builder.general-options";
 const DEFAULT_FIRMWARE_LINE = "kaack";
@@ -29,7 +30,7 @@ function setUnavailable(error) {
   $('availabilityErrorText').textContent = `${error.message} No demo build is available.`;
   $('availabilityError').classList.remove('hidden');
   $('builderForm').classList.add('unavailable');
-  $('builderForm').querySelectorAll('select, textarea, button').forEach((control) => { control.disabled = true; });
+  $('builderForm').querySelectorAll('select, input, textarea, button').forEach((control) => { control.disabled = true; });
   setStatus('error', 'Live builder unavailable', 'The build server could not be reached. Try again later.', 0);
 }
 
@@ -63,7 +64,7 @@ function renderCatalog() {
 function renderLine() {
   const line = selectedLine();
   state.targets = line?.targets || [];
-  $('target').innerHTML = state.targets.map((x) => `<option value="${escapeHtml(x.target)}">${escapeHtml(x.target)} · ${escapeHtml(x.manufacturer || "Unknown")}</option>`).join("");
+  $('targetList').innerHTML = state.targets.map((x) => `<option value="${escapeHtml(x.target)}" label="${escapeHtml(`${x.manufacturer || "Unknown"} · ${x.mcu || "MCU unknown"}`)}"></option>`).join("");
   const preferredTarget = state.targets.find((x) => x.target === "HDZERO_HALO") || state.targets.find((x) => x.target === "KAKUTEH7") || state.targets[0];
   $('target').value = preferredTarget?.target || "";
   renderTarget();

@@ -27,7 +27,7 @@
             <div class="field-grid three compact-fields">
               <label class="field"><span>Firmware line</span><select id="firmware" name="firmware"></select></label>
               <label class="field"><span>Version</span><select id="version" name="version"></select></label>
-              <label class="field"><span>Flight controller</span><select id="target" name="target"></select></label>
+              <label class="field"><span>Target</span><input id="target" name="target" list="targetList" autocomplete="off" placeholder="Search target name" /><datalist id="targetList"></datalist></label>
             </div>
             <div class="meta-line"><span id="releaseMeta"></span><span id="targetMeta"></span></div>
             <div class="notice version-disclaimer" role="note" aria-label="Version clarification">
@@ -70,7 +70,7 @@
       </main>
       <footer><span>KAACK Cloud Builder · community release</span><span>Independent project · Use firmware at your own risk</span></footer>
     </div>
-    <script src="runtime-config.js"></script>
+    <script src="runtime-config.js?v=2026-08-24-2"></script>
     <script type="module" src="app.js"></script>
   </body>
 </html>
