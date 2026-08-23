@@ -16,9 +16,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Require the Worker GitHub token
+        shell: bash
+        env:
+          WORKER_GITHUB_TOKEN: ${{ secrets.WORKER_GITHUB_TOKEN }}
+        run: test -n "${WORKER_GITHUB_TOKEN}" || { echo "Set the WORKER_GITHUB_TOKEN repository secret before deploying the live builder."; exit 1; }
       - uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: worker
           command: deploy
+      - name: Store the Worker GitHub token
+        working-directory: worker
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WORKER_GITHUB_TOKEN: ${{ secrets.WORKER_GITHUB_TOKEN }}
+        run: printf '%s' "${WORKER_GITHUB_TOKEN}" | npx wrangler secret put GITHUB_TOKEN

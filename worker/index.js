@@ -174,16 +174,24 @@ async function buildStatus(env, id) {
   if (run.conclusion !== "success") return { id, mode: "github-actions", status: "failure", message: `Workflow finished with ${run.conclusion || "unknown"}.`, workflowUrl: run.html_url };
   const artifacts = await gh(env, `/repos/${env.GITHUB_REPOSITORY}/actions/runs/${run.id}/artifacts`);
   const artifact = artifacts.artifacts?.find((x) => x.name === `kaack-${id}`) || artifacts.artifacts?.[0];
-  const publicBase = String(env.PUBLIC_API_BASE_URL || "").replace(/\/$/, "");
-  return { id, mode: "github-actions", status: "success", message: env.FIRMWARE_BUCKET ? "Build finished. Download the verified firmware file." : "Build finished. Download the GitHub Actions artifact ZIP and verify its manifest.", workflowUrl: run.html_url, downloadUrl: env.FIRMWARE_BUCKET ? `${publicBase}/api/builds/${id}/download` : artifact?.archive_download_url || run.html_url, artifactName: artifact?.name };
+  return { id, mode: "github-actions", status: "success", message: env.FIRMWARE_BUCKET ? "Build finished. Download the verified firmware file." : "Build finished. Download the GitHub Actions artifact ZIP and verify its manifest.", workflowUrl: run.html_url, downloadUrl: `/api/builds/${id}/download`, artifactName: artifact?.name };
 }
 async function downloadFirmware(env, id) {
-  if (!env.FIRMWARE_BUCKET) return json({ error: "R2 firmware storage is not configured" }, 501);
-  for (const extension of ["hex", "uf2"]) {
-    const object = await env.FIRMWARE_BUCKET.get(`firmware/${id}.${extension}`);
-    if (object) return new Response(object.body, { headers: { "content-type": extension === "hex" ? "text/plain; charset=utf-8" : "application/octet-stream", "content-disposition": `attachment; filename=kaack-${id}.${extension}`, etag: object.httpEtag || "" } });
+  if (env.FIRMWARE_BUCKET) {
+    for (const extension of ["hex", "uf2"]) {
+      const object = await env.FIRMWARE_BUCKET.get(`firmware/${id}.${extension}`);
+      if (object) return new Response(object.body, { headers: { "content-type": extension === "hex" ? "text/plain; charset=utf-8" : "application/octet-stream", "content-disposition": `attachment; filename=kaack-${id}.${extension}`, etag: object.httpEtag || "" } });
+    }
+    return json({ error: "Firmware file is not available yet" }, 404);
   }
-  return json({ error: "Firmware file is not available yet" }, 404);
+  const run = await locateRun(env, id);
+  if (!run || run.status !== "completed" || run.conclusion !== "success") return json({ error: "Build artifact is not available yet" }, 404);
+  const artifacts = await gh(env, `/repos/${env.GITHUB_REPOSITORY}/actions/runs/${run.id}/artifacts`);
+  const artifact = artifacts.artifacts?.find((x) => x.name === `kaack-${id}`) || artifacts.artifacts?.[0];
+  if (!artifact?.archive_download_url) return json({ error: "Build artifact is not available" }, 404);
+  const response = await fetch(artifact.archive_download_url, { headers: { accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", authorization: `Bearer ${env.GITHUB_TOKEN}`, "user-agent": "kaack-cloud-builder" } });
+  if (!response.ok) return json({ error: `GitHub artifact download ${response.status}` }, 502);
+  return new Response(response.body, { status: response.status, headers: { "content-type": "application/zip", "content-disposition": `attachment; filename=kaack-${id}.zip`, "cache-control": "private, max-age=60" } });
 }
 
 export default { async fetch(request, env) {

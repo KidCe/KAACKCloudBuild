@@ -29,6 +29,16 @@ on:
         description: "Server-normalized JSON array of USE_* flags"
         required: true
         type: string
+      build_key:
+        description: "Optional official Cloud Build key for byte-for-byte comparison"
+        required: false
+        default: ""
+        type: string
+      release_name:
+        description: "Optional official Cloud Build release name for comparison"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -49,6 +59,8 @@ jobs:
       REQUEST_TARGET: ${{ inputs.target }}
       BUILD_ID: ${{ inputs.build_id }}
       FLAGS_JSON: ${{ inputs.flags_json }}
+      BUILD_KEY: ${{ inputs.build_key }}
+      RELEASE_NAME: ${{ inputs.release_name }}
     steps:
       - name: Require the approved firmware source
         shell: bash
@@ -58,6 +70,8 @@ jobs:
           test -n "${SOURCE_REF}" || { echo "The builder must provide an approved source ref."; exit 1; }
           [[ "${SOURCE_REF}" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "Invalid source ref"; exit 1; }
           [[ -z "${CONFIG_REF}" || "${CONFIG_REF}" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "Invalid config ref"; exit 1; }
+          [[ -z "${BUILD_KEY}" || "${BUILD_KEY}" =~ ^[A-Za-z0-9-]+$ ]] || { echo "Invalid build key"; exit 1; }
+          [[ -z "${RELEASE_NAME}" || "${RELEASE_NAME}" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "Invalid release name"; exit 1; }
           case "${SOURCE_REF}" in
             KAACK-4.5.0) test "${CONFIG_REF}" = "9a9f899aab4c4ffaa74f973a643447b48453ff54" || { echo "KAACK-4.5.0 requires its compatible pinned config ref."; exit 1; } ;;
             KAACK-2025.12) test -z "${CONFIG_REF}" || { echo "KAACK-2025.12 must use its checked-out config submodule."; exit 1; } ;;
@@ -107,7 +121,9 @@ jobs:
           [[ "${target}" =~ ^[A-Z0-9_-]+$ ]] || { echo "Invalid target"; exit 1; }
           printf '%s' "${FLAGS_JSON}" | jq -e 'type == "array" and all(.[]; test("^USE_[A-Z0-9_]+$"))' >/dev/null || { echo "Invalid flags JSON"; exit 1; }
           mapfile -t flags < <(printf '%s' "${FLAGS_JSON}" | jq -r '.[]')
-          extra_flags="-DCLOUD_BUILD -DBUILD_KEY=\\\"${BUILD_ID}\\\" -DRELEASE_NAME=\\\"${VERSION}\\\""
+          build_key="${BUILD_KEY:-${BUILD_ID}}"
+          release_name="${RELEASE_NAME:-${VERSION}}"
+          extra_flags="-DCLOUD_BUILD -DBUILD_KEY=\\\"${build_key}\\\" -DRELEASE_NAME=\\\"${release_name}\\\""
           for flag in "${flags[@]}"; do
             [[ "${flag}" =~ ^USE_[A-Z0-9_]+$ ]] || { echo "Invalid build flag: ${flag}"; exit 1; }
             extra_flags+=" -D${flag}"
@@ -145,6 +161,8 @@ jobs:
           test -n "$(find output -maxdepth 1 -type f -name '*.hex' -size +0c -print -quit)" || { echo "No non-empty HEX firmware artifact found"; exit 1; }
           source_commit="$(git -C firmware rev-parse HEAD)"
           config_commit="$(git -C firmware/src/config rev-parse HEAD 2>/dev/null || echo external-config-master)"
+          build_key="${BUILD_KEY:-${BUILD_ID}}"
+          release_name="${RELEASE_NAME:-${VERSION}}"
           jq -n \
             --arg buildId "${BUILD_ID}" \
             --arg repository "${FIRMWARE_REPOSITORY}" \
@@ -156,7 +174,9 @@ jobs:
             --arg configCommit "${config_commit}" \
             --arg builtAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --argjson flags "${FLAGS_JSON}" \
-            '{buildId:$buildId,repository:$repository,version:$version,sourceRef:$sourceRef,configRef:$configRef,target:$target,flags:$flags,sourceCommit:$sourceCommit,configCommit:$configCommit,builtAt:$builtAt}' > output/manifest.json
+            --arg buildKey "${build_key}" \
+            --arg releaseName "${release_name}" \
+            '{buildId:$buildId,buildKey:$buildKey,releaseName:$releaseName,repository:$repository,version:$version,sourceRef:$sourceRef,configRef:$configRef,target:$target,flags:$flags,sourceCommit:$sourceCommit,configCommit:$configCommit,builtAt:$builtAt}' > output/manifest.json
           sha256sum output/* > output/SHA256SUMS
 
       - name: Upload firmware artifact

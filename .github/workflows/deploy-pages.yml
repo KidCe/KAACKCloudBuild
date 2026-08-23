@@ -22,6 +22,12 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Configure public Worker endpoint
+        shell: bash
+        env:
+          KAACK_API_BASE_URL: ${{ vars.KAACK_API_BASE_URL }}
+        run: |
+          jq -n --arg apiBase "${KAACK_API_BASE_URL}" '"window.KAACK_CONFIG = " + ({apiBase:$apiBase} | tojson) + ";"' > runtime-config.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
