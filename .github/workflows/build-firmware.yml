@@ -40,7 +40,7 @@ jobs:
       FIRMWARE_REPOSITORY: ${{ vars.FIRMWARE_REPOSITORY || 'limonspb/betaflight' }}
       VERSION: ${{ inputs.version }}
       SOURCE_REF: ${{ inputs.source_ref }}
-      TARGET: ${{ inputs.target }}
+      REQUEST_TARGET: ${{ inputs.target }}
       BUILD_ID: ${{ inputs.build_id }}
       FLAGS_JSON: ${{ inputs.flags_json }}
     steps:
@@ -94,8 +94,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "${TARGET}" = "${TARGET^^}" || { echo "Target must be uppercase"; exit 1; }
-          [[ "${TARGET}" =~ ^[A-Z0-9_-]+$ ]] || { echo "Invalid target"; exit 1; }
+          target="${REQUEST_TARGET}"
+          test "${target}" = "${target^^}" || { echo "Target must be uppercase"; exit 1; }
+          [[ "${target}" =~ ^[A-Z0-9_-]+$ ]] || { echo "Invalid target"; exit 1; }
           printf '%s' "${FLAGS_JSON}" | jq -e 'type == "array" and all(.[]; test("^USE_[A-Z0-9_]+$"))' >/dev/null || { echo "Invalid flags JSON"; exit 1; }
           mapfile -t flags < <(printf '%s' "${FLAGS_JSON}" | jq -r '.[]')
           extra_flags="-DCLOUD_BUILD -DBUILD_KEY=\\\"${BUILD_ID}\\\" -DRELEASE_NAME=\\\"${VERSION}\\\""
@@ -104,21 +105,21 @@ jobs:
             extra_flags+=" -D${flag}"
           done
           make configs
-          if [[ -f "src/config/configs/${TARGET}/config.h" ]]; then
-            build_command=(make hex CONFIG="${TARGET}" EXTRA_FLAGS="${extra_flags}")
-            uf2_command=(make uf2 CONFIG="${TARGET}" EXTRA_FLAGS="${extra_flags}")
-          elif find src/platform -path "*/target/${TARGET}/target.mk" -print -quit | grep -q .; then
-            build_command=(make hex TARGET="${TARGET}" EXTRA_FLAGS="${extra_flags}")
-            uf2_command=(make uf2 TARGET="${TARGET}" EXTRA_FLAGS="${extra_flags}")
+          if [[ -f "src/config/configs/${target}/config.h" ]]; then
+            build_command=(make hex CONFIG="${target}" EXTRA_FLAGS="${extra_flags}")
+            uf2_command=(make uf2 CONFIG="${target}" EXTRA_FLAGS="${extra_flags}")
+          elif find src/platform -path "*/target/${target}/target.mk" -print -quit | grep -q .; then
+            build_command=(make hex TARGET="${target}" EXTRA_FLAGS="${extra_flags}")
+            uf2_command=(make uf2 TARGET="${target}" EXTRA_FLAGS="${extra_flags}")
           else
-            echo "Target ${TARGET} is not present in the source checkout or hydrated config repository."
+            echo "Target ${target} is not present in the source checkout or hydrated config repository."
             exit 1
           fi
           echo "Building HEX with: ${build_command[*]}"
           "${build_command[@]}"
           echo "Building optional UF2 with: ${uf2_command[*]}"
           if ! "${uf2_command[@]}"; then
-            echo "UF2 output is unavailable for ${TARGET}; continuing with the verified HEX artifact."
+            echo "UF2 output is unavailable for ${target}; continuing with the verified HEX artifact."
           fi
 
       - name: Collect firmware and provenance
@@ -135,7 +136,7 @@ jobs:
             --arg repository "${FIRMWARE_REPOSITORY}" \
             --arg version "${VERSION}" \
             --arg sourceRef "${SOURCE_REF}" \
-            --arg target "${TARGET}" \
+            --arg target "${REQUEST_TARGET}" \
             --arg sourceCommit "${source_commit}" \
             --arg configCommit "${config_commit}" \
             --arg builtAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
