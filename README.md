@@ -4,6 +4,8 @@ An unofficial, independent web-based cloud builder MVP for KAACK / alternative B
 
 The UI intentionally stays close to the Betaflight Configurator firmware-flasher flow: choose a firmware line, then choose a version and target from that line, keep the common CRSF / Crossfire / DShot / Digital OSD defaults, optionally expand General Options, then build and download. The live catalog keeps official Betaflight and KAACK Community releases and targets separate.
 
+Build flags are requested for the selected release from the Betaflight Cloud option catalog when available, with KAACK-specific fallbacks. The UI puts LED/VTX racing essentials first and keeps less common features grouped below. KAACK artifacts use a version marker such as `K4.5.3-V19` in the filename.
+
 For configuring and backing up older KAACK firmware, use the [KidCe Configurator](https://kidce.github.io/KidCe-Configurator/) linked from the builder header.
 
 This first vertical slice is intentionally quick to run:

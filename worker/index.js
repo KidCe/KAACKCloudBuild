@@ -18,18 +18,34 @@ const DEFAULT_OPTIONS = {
     { name: "CRSF", value: "USE_SERIALRX_CRSF", default: true },
     { name: "SBUS", value: "USE_SERIALRX_SBUS", default: false },
     { name: "FPORT", value: "USE_SERIALRX_FPORT", default: false },
-    { name: "GHOST", value: "USE_SERIALRX_GHST", default: false }
+    { name: "GHOST", value: "USE_SERIALRX_GHST", default: false },
+    { name: "IBUS", value: "USE_SERIALRX_IBUS", default: false },
+    { name: "JETIEXBUS", value: "USE_SERIALRX_JETIEXBUS", default: false },
+    { name: "MAVLINK", value: "USE_SERIALRX_MAVLINK", default: false },
+    { name: "PPM", value: "USE_RX_PPM", default: false },
+    { name: "SPEKTRUM", value: "USE_SERIALRX_SPEKTRUM", default: false },
+    { name: "SRXL2", value: "USE_SERIALRX_SRXL2", default: false },
+    { name: "SUMD", value: "USE_SERIALRX_SUMD", default: false },
+    { name: "SUMH", value: "USE_SERIALRX_SUMH", default: false },
+    { name: "XBUS", value: "USE_SERIALRX_XBUS", default: false }
   ],
   telemetryProtocols: [
     { name: "Crossfire (CRSF)", value: "USE_TELEMETRY_CRSF", default: true },
     { name: "[None]", value: "", default: false },
+    { name: "FRSKY_HUB", value: "USE_TELEMETRY_FRSKY_HUB", default: false },
+    { name: "HOTT", value: "USE_TELEMETRY_HOTT", default: false },
+    { name: "IBUS EXTENDED", value: "USE_TELEMETRY_IBUS_EXTENDED", default: false },
+    { name: "LTM", value: "USE_TELEMETRY_LTM", default: false },
     { name: "SMARTPORT", value: "USE_TELEMETRY_SMARTPORT", default: false },
-    { name: "MAVLINK", value: "USE_TELEMETRY_MAVLINK", default: false }
+    { name: "MAVLINK", value: "USE_TELEMETRY_MAVLINK", default: false },
+    { name: "SRXL", value: "USE_TELEMETRY_SRXL", default: false }
   ],
   motorProtocols: [
+    { name: "BRUSHED", value: "USE_BRUSHED", default: false },
     { name: "DSHOT", value: "USE_DSHOT", default: true },
     { name: "MULTISHOT", value: "USE_MULTISHOT", default: false },
     { name: "ONESHOT", value: "USE_ONESHOT", default: false },
+    { name: "PROSHOT", value: "USE_PROSHOT", default: false },
     { name: "PWM", value: "USE_PWM_OUTPUT", default: false }
   ],
   osdProtocols: [
@@ -39,20 +55,52 @@ const DEFAULT_OPTIONS = {
     { name: "Analog + Digital", value: "USE_OSD_SD USE_OSD_HD", default: false }
   ],
   generalOptions: [
-    { name: "GPS", value: "USE_GPS", default: true },
-    { name: "LED Strip", value: "USE_LED_STRIP", default: true },
-    { name: "LED Strip (64)", value: "USE_LED_STRIP_64", default: false },
-    { name: "VTX", value: "USE_VTX", default: true },
+    { name: "Acro Trainer", value: "USE_ACRO_TRAINER", default: false },
+    { name: "AKK (SA FIX)", value: "USE_AKK_SMARTAUDIO", default: false },
+    { name: "Altitude Hold", value: "USE_ALTITUDE_HOLD", default: false },
+    { name: "Batt. Continue", value: "USE_BATTERY_CONTINUE", default: false },
     { name: "Camera Control", value: "USE_CAMERA_CONTROL", default: false },
-    { name: "Blackbox / SD card", value: "USE_SDCARD", default: false },
+    { name: "Chirp", value: "USE_CHIRP", default: false },
+    { name: "Dashboard", value: "USE_DASHBOARD", default: false },
+    { name: "EMFAT tools", value: "USE_EMFAT_TOOLS", default: false },
+    { name: "ESC Serial / 4way", value: "USE_ESCSERIAL_SIMONK", default: false },
+    { name: "GPS", value: "USE_GPS", default: false },
+    { name: "LED Strip", value: "USE_LED_STRIP", default: true },
+    { name: "LED Strip (64)", value: "USE_LED_STRIP_64", default: true },
+    { name: "Magnetometers", value: "USE_MAG", default: false },
+    { name: "Optical Flow", value: "USE_OPTICALFLOW", default: false },
+    { name: "OSD (FrSky)", value: "USE_FRSKYOSD", default: false, group: "OSD", groupedName: "FrSky" },
+    { name: "Pin IO", value: "USE_PINIO", default: false },
+    { name: "Position Hold", value: "USE_POSITION_HOLD", default: false },
     { name: "Race Pro", value: "USE_RACE_PRO", default: false },
+    { name: "Range Finder", value: "USE_RANGEFINDER", default: false },
+    { name: "Blackbox / SD card", value: "USE_SDCARD", default: false },
+    { name: "Soft Serial", value: "USE_SOFTSERIAL", default: false },
     { name: "Servos", value: "USE_SERVOS", default: false },
-    { name: "Magnetometers", value: "USE_MAG", default: false }
+    { name: "VTX", value: "USE_VTX", default: true },
+    { name: "Wing", value: "USE_WING", default: false }
   ]
 };
 
 const parseJson = (value, fallback) => {
   try { return value ? JSON.parse(value) : fallback; } catch { throw new Error("Invalid JSON in worker configuration"); }
+};
+const optionReleaseFor = (release) => String(release || "").replace(/^kaack-/i, "").replace(/-v\d+$/i, "");
+const mergeOptions = (primary, fallback) => [...new Map([...(primary || []), ...(fallback || [])].map((item) => [item.value, item])).values()];
+const optionsForRelease = async (env, release) => {
+  const upstreamRelease = optionReleaseFor(release);
+  if (!/^[A-Za-z0-9._-]+$/.test(upstreamRelease)) return DEFAULT_OPTIONS;
+  const response = await fetch(`${upstream(env)}/api/options/${encodeURIComponent(upstreamRelease)}`);
+  if (!response.ok) return DEFAULT_OPTIONS;
+  const upstreamOptions = await response.json();
+  return {
+    ...DEFAULT_OPTIONS,
+    ...upstreamOptions,
+    radioProtocols: mergeOptions(upstreamOptions.radioProtocols, DEFAULT_OPTIONS.radioProtocols),
+    telemetryProtocols: mergeOptions([{ name: "Crossfire (CRSF)", value: "USE_TELEMETRY_CRSF", default: true }], upstreamOptions.telemetryProtocols),
+    motorProtocols: mergeOptions(upstreamOptions.motorProtocols, DEFAULT_OPTIONS.motorProtocols),
+    generalOptions: mergeOptions(upstreamOptions.generalOptions, DEFAULT_OPTIONS.generalOptions)
+  };
 };
 const sourceRefs = (env) => {
   const configured = parseJson(env.FIRMWARE_SOURCE_REFS, null);
@@ -246,9 +294,9 @@ export default { async fetch(request, env) {
     if (url.pathname === "/api/health") return json({ ok: true, service: "kaack-cloud-builder", mode: hasBuilder(env) ? "github-actions" : "unavailable", sourceConfigured: Boolean(sourceRepository(env)), liveBuilderAvailable: hasBuilder(env) });
     if (url.pathname === "/api/catalog" && request.method === "GET") return json(await catalog(env), 200, { "cache-control": "public, max-age=300" });
     if (url.pathname === "/api/options" && request.method === "GET") {
-      if (sourceRepository(env)) return json(DEFAULT_OPTIONS, 200, { "cache-control": "public, max-age=3600" });
       const release = url.searchParams.get("release");
       if (!release || !/^[A-Za-z0-9._-]+$/.test(release)) return json({ error: "Invalid release" }, 400);
+      if (sourceRepository(env)) return json(await optionsForRelease(env, release), 200, { "cache-control": "public, max-age=3600" });
       const response = await fetch(`${upstream(env)}/api/options/${encodeURIComponent(release)}`);
       return new Response(response.body, { status: response.status, headers: { ...JSON_HEADERS, "cache-control": "public, max-age=3600" } });
     }

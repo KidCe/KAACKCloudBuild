@@ -43,7 +43,9 @@ test('workflow validates user-controlled flags before make', async () => {
   assert.match(workflow, /FIRMWARE_REPOSITORY/);
   assert.match(workflow, /approved KAACK fork/);
   assert.match(workflow, /firmware_stem=/);
-  assert.match(workflow, /firmware_stem="\$\(slug "\$\{REQUEST_TARGET\}"\)_\$\(slug "\$\{FIRMWARE_LINE\}"\)_/);
+  assert.match(workflow, /version_slug/);
+  assert.match(workflow, /version_slug_value="K\$\{version_slug_value#KAACK-\}"/);
+  assert.match(workflow, /firmware_stem="\$\(slug "\$\{REQUEST_TARGET\}"\)_\$\(version_slug\)_/);
   assert.match(workflow, /firmware_line/);
   assert.match(workflow, /betaflight\/betaflight/);
   assert.match(workflow, /limonspb\/betaflight/);
@@ -70,6 +72,9 @@ test('worker keeps GitHub credentials server-side', async () => {
   assert.match(worker, /gitTree/);
   assert.match(worker, /configRef/);
   assert.match(worker, /officialConfigRefFor/);
+  assert.match(worker, /optionsForRelease/);
+  assert.match(worker, /USE_LED_STRIP_64/);
+  assert.match(worker, /USE_SDCARD/);
   assert.match(worker, /\^\[A-Z0-9_-\]\+\$/);
   assert.doesNotMatch(await readFile(new URL('../app.js', import.meta.url), 'utf8'), /GITHUB_TOKEN/);
 });
@@ -92,4 +97,7 @@ test('builder remembers general options and applies racing defaults', async () =
   assert.match(app, /Download ZIP artifact/);
   assert.match(app, /DEFAULT_API_BASE/);
   assert.match(app, /targetList/);
+  assert.match(app, /racingOptions/);
+  assert.match(app, /additionalOptions/);
+  assert.match(app, /RACING_DEFAULT_FLAGS/);
 });

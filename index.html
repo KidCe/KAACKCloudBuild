@@ -3,19 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f5f4ef" />
+    <meta name="theme-color" content="#f3f5f7" />
     <title>KAACK Cloud Builder</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <div class="shell">
       <header class="topbar">
-        <a class="brand" href="./" aria-label="KAACK Cloud Builder home"><span class="brand-mark">K/</span><span><strong>KAACK</strong><small>Cloud Builder</small></span></a>
+        <a class="brand" href="./" aria-label="KAACK Cloud Builder home"><img class="brand-logo" src="assets/k-logo-black-n-white.svg" alt="" /><span><strong>KAACK</strong><small>Cloud Builder</small></span></a>
         <div class="topbar-actions"><span id="connectionBadge" class="status-pill connecting"><i></i> Connecting</span><a href="https://kidce.github.io/KidCe-Configurator/" target="_blank" rel="noreferrer">Legacy Configurator ↗</a><a href="https://github.com/KidCe/KAACKCloudBuild" target="_blank" rel="noreferrer">Repository ↗</a></div>
       </header>
 
       <main>
-        <section class="intro"><div><p class="eyebrow">Independent community builder</p><h1>Build firmware.<br /><span>Keep flying.</span></h1></div><p class="intro-copy">A small, live-only build service for Betaflight and KAACK community firmware.</p></section>
+        <section class="intro"><div><p class="eyebrow">Independent community builder</p><h1>KAACK Cloud Builder</h1></div><p class="intro-copy">A small, live-only build service for Betaflight and KAACK community firmware.</p></section>
         <div class="notice release-notice"><span class="notice-icon">!</span><span><strong>Community-built service.</strong> Not affiliated with Betaflight. Verify the firmware line, target and manifest before flashing. Keep props off for bench tests.</span></div>
         <div id="availabilityError" class="availability-error hidden" role="alert"><span class="notice-icon">!</span><span><strong>Live builder unavailable.</strong> <span id="availabilityErrorText">The build service could not be reached.</span></span></div>
         <div class="stripe-rule" aria-hidden="true"><span></span><span></span><span></span></div>
@@ -45,10 +45,11 @@
               </div>
             </div>
 
-            <details class="advanced-options">
-              <summary><span>General options</span><span id="flagCount" class="option-count">0 flags</span></summary>
-              <p class="advanced-hint">Your selections are remembered in this browser. Race Pro is optional and changes safety-related defaults; leave it off unless you explicitly need its spec-racing behavior.</p>
-              <div id="generalOptions" class="check-grid"></div>
+            <details class="advanced-options" open>
+              <summary><span>Build flags <small class="summary-hint">Betaflight-style USE_* options</small></span><span id="flagCount" class="option-count">0 flags</span></summary>
+              <p class="advanced-hint">Racing essentials are shown first. Additional Betaflight options stay grouped below and remain optional. Your selections are remembered in this browser.</p>
+              <section class="flag-group primary-flags"><h3>Racing essentials</h3><div id="racingOptions" class="check-grid"></div></section>
+              <details class="secondary-options"><summary>Additional features</summary><div id="additionalOptions" class="check-grid"></div></details>
               <label class="expert-field"><span>Custom defines <em>optional</em></span><textarea id="customFlags" rows="2" placeholder="USE_FEATURE_NAME USE_ANOTHER_FEATURE"></textarea></label>
               <p class="field-hint" id="customFlagHint">Uppercase USE_* defines only.</p>
             </details>

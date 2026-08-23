@@ -5,6 +5,8 @@ const $ = (id) => document.getElementById(id);
 const GENERAL_OPTIONS_KEY = "kaack-cloud-builder.general-options";
 const DEFAULT_FIRMWARE_LINE = "kaack";
 const DEFAULT_KAACK_RELEASE = "kaack-4.5.3-v19";
+const RACING_DEFAULT_FLAGS = new Set(["USE_LED_STRIP", "USE_LED_STRIP_64", "USE_VTX"]);
+const RACING_OPTION_VALUES = new Set(["USE_LED_STRIP", "USE_LED_STRIP_64", "USE_VTX"]);
 const state = { catalog: null, options: null, releases: [], targets: [], firmwareLine: DEFAULT_FIRMWARE_LINE, live: false, selected: new Set(), build: null };
 
 const api = async (path, init) => { const response = await fetch(`${apiBase}${path}`, init); if (!response.ok) throw new Error(`API ${response.status}`); return response.json(); };
@@ -103,7 +105,13 @@ function renderOptions() {
   fillSelect('osdProtocol', osdOptions, 'USE_OSD_HD');
   const savedFlags = readGeneralOptions();
   const generalOptions = (opts.generalOptions || []).filter((x) => !x.group);
-  $('generalOptions').innerHTML = generalOptions.map((x) => { const label = x.value === "USE_RACE_PRO" ? "Race Pro (optional)" : x.name; const checked = savedFlags ? savedFlags.includes(x.value) : x.default; return `<label class="check"><input type="checkbox" data-flag="${escapeHtml(x.value)}" ${checked ? "checked" : ""} /><span>${escapeHtml(label)}</span></label>`; }).join("");
+  const renderFlag = (x) => {
+    const label = x.value === "USE_RACE_PRO" ? "Race Pro (optional)" : x.name;
+    const checked = savedFlags ? savedFlags.includes(x.value) : state.firmwareLine === "kaack" ? RACING_DEFAULT_FLAGS.has(x.value) : Boolean(x.default);
+    return `<label class="check"><input type="checkbox" data-flag="${escapeHtml(x.value)}" ${checked ? "checked" : ""} /><span>${escapeHtml(label)}</span></label>`;
+  };
+  $('racingOptions').innerHTML = generalOptions.filter((x) => RACING_OPTION_VALUES.has(x.value)).map(renderFlag).join("");
+  $('additionalOptions').innerHTML = generalOptions.filter((x) => !RACING_OPTION_VALUES.has(x.value)).map(renderFlag).join("");
   state.selected = new Set([...document.querySelectorAll('[data-flag]:checked')].flatMap((x) => x.dataset.flag.split(" ")));
   document.querySelectorAll('[data-flag]').forEach((x) => x.addEventListener('change', () => { persistGeneralOptions(); updateRecipe(); }));
   ['radioProtocol','telemetryProtocol','motorProtocol','osdProtocol'].forEach((id) => $(id).addEventListener('change', updateRecipe));

@@ -183,7 +183,15 @@ jobs:
           set -euo pipefail
           mkdir -p output
           mapfile -t flags < <(printf '%s' "${FLAGS_JSON}" | jq -r '.[]')
-          slug() { printf '%s' "$1" | tr '[:lower:]' '[:upper:]' | sed -E 's/^KAACK[-_]?//; s/[^A-Z0-9.-]+/-/g; s/^-+//; s/-+$//'; }
+          slug() { printf '%s' "$1" | tr '[:lower:]' '[:upper:]' | sed -E 's/[^A-Z0-9.-]+/-/g; s/^-+//; s/-+$//'; }
+          version_slug() {
+            local version_slug_value
+            version_slug_value="$(slug "${VERSION}")"
+            if [[ "${FIRMWARE_LINE}" == "kaack" && "${version_slug_value}" == KAACK-* ]]; then
+              version_slug_value="K${version_slug_value#KAACK-}"
+            fi
+            printf '%s' "${version_slug_value}"
+          }
           flag_slug() {
             case "$1" in
               USE_SERIALRX_CRSF) echo CRSF ;;
@@ -215,7 +223,7 @@ jobs:
           for flag in "${flags[@]}"; do flag_tokens+=("$(flag_slug "${flag}")"); done
           flags_slug="$(IFS=_; printf '%s' "${flag_tokens[*]}")"
           [[ -n "${flags_slug}" ]] || flags_slug="NOFLAGS"
-          firmware_stem="$(slug "${REQUEST_TARGET}")_$(slug "${FIRMWARE_LINE}")_$(slug "${VERSION}")_${flags_slug}"
+          firmware_stem="$(slug "${REQUEST_TARGET}")_$(version_slug)_${flags_slug}"
           hex_source="$(find firmware/obj -maxdepth 1 -type f -name '*.hex' -size +0c -print -quit)"
           test -n "${hex_source}" || { echo "No non-empty HEX firmware artifact found"; exit 1; }
           hex_filename="${firmware_stem}.hex"
