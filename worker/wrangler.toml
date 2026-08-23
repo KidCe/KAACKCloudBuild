@@ -1,0 +1,19 @@
+name = "kaack-cloud-builder-api"
+main = "index.js"
+compatibility_date = "2026-08-23"
+
+[vars]
+# Set these in the Cloudflare dashboard or with `wrangler secret put`.
+# UPSTREAM_BUILD_API = "https://build.betaflight.com"
+# GITHUB_REPOSITORY = "OWNER/REPOSITORY"
+# GITHUB_REF = "main"
+# CATALOG_PROBE_TARGET = "KAKUTEH7"
+# FIRMWARE_REPOSITORY = "OWNER/KAACK-FIRMWARE"
+# FIRMWARE_SOURCE_REFS = '[{"release":"kaack-4.5.3","label":"KAACK 4.5.3","type":"Community","ref":"REPLACE_WITH_REAL_TAG"}]'
+# CATALOG_SOURCE_REF = "REPLACE_WITH_REAL_TAG"
+# PUBLIC_API_BASE_URL = "https://kaack-cloud-builder-api.example.workers.dev"
+
+# Enable after creating the bucket and adding the matching R2 binding.
+# [[r2_buckets]]
+# binding = "FIRMWARE_BUCKET"
+# bucket_name = "kaack-firmware"

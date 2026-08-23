@@ -1,0 +1,30 @@
+{
+  "mode": "demo",
+  "source": "Local demo catalog. Configure the Cloudflare Worker for the live Betaflight catalog.",
+  "firmware": [{ "id": "KAACK", "label": "KAACK Community Build", "repository": "configure-in-worker" }],
+  "releases": [
+    { "release": "2025.12.0-KAACK", "type": "Community", "cloudBuild": true, "date": "Demo release" },
+    { "release": "2026.6.1", "type": "Stable", "cloudBuild": true, "date": "Upstream compatible" },
+    { "release": "2025.12.5", "type": "Stable", "cloudBuild": true, "date": "Upstream compatible" },
+    { "release": "4.5.5", "type": "Stable", "cloudBuild": true, "date": "Upstream compatible" },
+    { "release": "4.5.4", "type": "Stable", "cloudBuild": true, "date": "Upstream compatible" },
+    { "release": "4.5.3", "type": "Stable", "cloudBuild": true, "date": "Upstream compatible" }
+  ],
+  "targets": [
+    { "target": "KAKUTEH7", "manufacturer": "Holybro", "mcu": "STM32H743", "group": "supported" },
+    { "target": "SPEEDYBEEF405V3", "manufacturer": "SpeedyBee", "mcu": "STM32F405", "group": "supported" },
+    { "target": "MAMBAF722_2022B", "manufacturer": "Diatone", "mcu": "STM32F722", "group": "supported" },
+    { "target": "IFLIGHT_BLITZ_F722", "manufacturer": "iFlight", "mcu": "STM32F722", "group": "supported" },
+    { "target": "FLYWOOF405S_AIO", "manufacturer": "Flywoo", "mcu": "STM32F405", "group": "supported" },
+    { "target": "BETAFPVF411", "manufacturer": "BETAFPV", "mcu": "STM32F411", "group": "supported" },
+    { "target": "TMOTORF7", "manufacturer": "T-Motor", "mcu": "STM32F722", "group": "supported" },
+    { "target": "ANYFCF7", "manufacturer": "FOSS", "mcu": "STM32F745", "group": "supported" }
+  ],
+  "options": {
+    "radioProtocols": [{"name":"CRSF","value":"USE_SERIALRX_CRSF","default":true},{"name":"SBUS","value":"USE_SERIALRX_SBUS","default":false},{"name":"FPORT","value":"USE_SERIALRX_FPORT","default":false},{"name":"GHOST","value":"USE_SERIALRX_GHST","default":false}],
+    "telemetryProtocols": [{"name":"Crossfire (CRSF)","value":"USE_TELEMETRY_CRSF","default":true},{"name":"[None]","value":"","default":false},{"name":"SMARTPORT","value":"USE_TELEMETRY_SMARTPORT","default":false},{"name":"MAVLINK","value":"USE_TELEMETRY_MAVLINK","default":false}],
+    "motorProtocols": [{"name":"DSHOT","value":"USE_DSHOT","default":true},{"name":"MULTISHOT","value":"USE_MULTISHOT","default":false},{"name":"ONESHOT","value":"USE_ONESHOT","default":false},{"name":"PWM","value":"USE_PWM_OUTPUT","default":false}],
+    "osdProtocols": [{"name":"None","value":"","default":false},{"name":"Analog","value":"USE_OSD_SD","default":false},{"name":"Digital","value":"USE_OSD_HD","default":true},{"name":"Analog + Digital","value":"USE_OSD_SD USE_OSD_HD","default":false}],
+    "generalOptions": [{"name":"GPS","value":"USE_GPS","default":true},{"name":"LED Strip","value":"USE_LED_STRIP","default":true},{"name":"LED Strip (64)","value":"USE_LED_STRIP_64","default":false},{"name":"VTX","value":"USE_VTX","default":true},{"name":"Camera Control","value":"USE_CAMERA_CONTROL","default":false},{"name":"Blackbox / SD card","value":"USE_SDCARD","default":false},{"name":"Race Pro","value":"USE_RACE_PRO","default":false},{"name":"Servos","value":"USE_SERVOS","default":false},{"name":"Magnetometers","value":"USE_MAG","default":false}]
+  }
+}

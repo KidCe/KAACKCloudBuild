@@ -1,0 +1,128 @@
+name: Build KAACK firmware
+run-name: KAACK build ${{ inputs.build_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_id:
+        description: "Deterministic request id"
+        required: true
+        type: string
+      version:
+        description: "Display release identifier"
+        required: true
+        type: string
+      source_ref:
+        description: "Validated Git tag or branch to check out"
+        required: true
+        type: string
+      target:
+        description: "Validated flight-controller target"
+        required: true
+        type: string
+      flags_json:
+        description: "Server-normalized JSON array of USE_* flags"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kaack-build-${{ inputs.build_id }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FIRMWARE_REPOSITORY: ${{ vars.FIRMWARE_REPOSITORY }}
+      VERSION: ${{ inputs.version }}
+      SOURCE_REF: ${{ inputs.source_ref }}
+      TARGET: ${{ inputs.target }}
+      BUILD_ID: ${{ inputs.build_id }}
+      FLAGS_JSON: ${{ inputs.flags_json }}
+    steps:
+      - name: Require the approved firmware source
+        shell: bash
+        run: |
+          test -n "${FIRMWARE_REPOSITORY}" || { echo "Set the repository Actions variable FIRMWARE_REPOSITORY to the approved KAACK fork before building."; exit 1; }
+          test -n "${SOURCE_REF}" || { echo "The builder must provide an approved source ref."; exit 1; }
+          [[ "${SOURCE_REF}" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "Invalid source ref"; exit 1; }
+
+      - name: Checkout firmware source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.FIRMWARE_REPOSITORY }}
+          ref: ${{ env.SOURCE_REF }}
+          path: firmware
+          fetch-depth: 1
+
+      - name: Cache firmware toolchain
+        uses: actions/cache@v4
+        id: toolchain-cache
+        with:
+          path: firmware/tools
+          key: ${{ runner.os }}-kaack-${{ hashFiles('firmware/mk/tools.mk') }}
+
+      - name: Install firmware toolchain
+        if: steps.toolchain-cache.outputs.cache-hit != 'true'
+        working-directory: firmware
+        shell: bash
+        run: make arm_sdk_install
+
+      - name: Validate and build target
+        working-directory: firmware
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${TARGET}" = "${TARGET^^}" || { echo "Target must be uppercase"; exit 1; }
+          [[ "${TARGET}" =~ ^[A-Z0-9_-]+$ ]] || { echo "Invalid target"; exit 1; }
+          mapfile -t flags < <(printf '%s' "${FLAGS_JSON}" | jq -r '.[]')
+          extra_flags="-DCLOUD_BUILD -DBUILD_KEY=${BUILD_ID} -DRELEASE_NAME=${VERSION}"
+          for flag in "${flags[@]}"; do
+            [[ "${flag}" =~ ^USE_[A-Z0-9_]+$ ]] || { echo "Invalid build flag: ${flag}"; exit 1; }
+            extra_flags+=" -D${flag}"
+          done
+          make configs
+          make "${TARGET}" EXTRA_FLAGS="${extra_flags}"
+
+      - name: Collect firmware and provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p output
+          find firmware/obj -maxdepth 1 -type f \( -name '*.hex' -o -name '*.uf2' \) -exec cp {} output/ \;
+          test -n "$(find output -type f | head -1)" || { echo "No firmware artifact found"; exit 1; }
+          cat > output/manifest.json <<EOF
+          {"buildId":"${BUILD_ID}","repository":"${FIRMWARE_REPOSITORY}","version":"${VERSION}","target":"${TARGET}","flags":${FLAGS_JSON},"sourceCommit":"$(git -C firmware rev-parse HEAD)","builtAt":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
+          EOF
+          sha256sum output/* > output/SHA256SUMS
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kaack-${{ inputs.build_id }}
+          path: output/
+          retention-days: 30
+
+      - name: Publish verified firmware to Cloudflare R2
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ vars.R2_BUCKET_NAME }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${AWS_ACCESS_KEY_ID}" || -z "${AWS_SECRET_ACCESS_KEY}" || -z "${R2_BUCKET_NAME}" || -z "${CLOUDFLARE_ACCOUNT_ID}" ]]; then
+            echo "R2 not configured; keeping the GitHub Actions artifact only."
+            exit 0
+          fi
+          firmware_file="$(find output -maxdepth 1 -type f \( -name '*.hex' -o -name '*.uf2' \) -print -quit)"
+          extension="${firmware_file##*.}"
+          endpoint="https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          aws s3 cp "${firmware_file}" "s3://${R2_BUCKET_NAME}/firmware/${BUILD_ID}.${extension}" --endpoint-url "${endpoint}"
+          aws s3 cp output/manifest.json "s3://${R2_BUCKET_NAME}/firmware/${BUILD_ID}.json" --endpoint-url "${endpoint}"
+          aws s3 cp output/SHA256SUMS "s3://${R2_BUCKET_NAME}/firmware/${BUILD_ID}.SHA256SUMS" --endpoint-url "${endpoint}"

@@ -1,0 +1,11 @@
+{
+  "name": "kaack-cloud-builder",
+  "private": true,
+  "version": "0.2.0",
+  "description": "Unofficial KAACK community firmware builder MVP",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "serve": "node scripts/serve.mjs"
+  }
+}
