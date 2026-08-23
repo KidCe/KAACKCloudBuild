@@ -113,7 +113,7 @@ const gitTree = async (env, repository, ref) => {
 const sourceTargetIndex = async (env, ref, configuredConfigRef = "") => {
   const sourceTree = await gitTree(env, sourceRepository(env), ref);
   const classicTargets = sourceTree
-    .map((item) => item.path.match(/^src\/platform\/[^/]+\/target\/([^/]+)\/target\.mk$/)?.[1])
+    .map((item) => item.path.match(/^src\/(?:platform|main)\/[^/]+\/target\/([^/]+)\/target\.mk$/)?.[1])
     .filter(Boolean)
     .map((target) => ({ target, manufacturer: "KAACK source target", group: "source" }));
   const configSubmodule = sourceTree.find((item) => item.path === "src/config" && item.type === "commit");
