@@ -4,10 +4,12 @@ An unofficial, independent web-based cloud builder MVP for KAACK / alternative B
 
 The UI intentionally stays close to the Betaflight Configurator firmware-flasher flow: choose a firmware line, then choose a version and target from that line, keep the common CRSF / Crossfire / DShot / Digital OSD defaults, optionally expand General Options, then build and download. The live catalog keeps official Betaflight and KAACK Community releases and targets separate.
 
+For configuring and backing up older KAACK firmware, use the [KidCe Configurator](https://kidce.github.io/KidCe-Configurator/) linked from the builder header.
+
 This first vertical slice is intentionally quick to run:
 
 - `index.html` + `app.js` provide the Cloud Build-style UI in English.
-- `data/catalog.json` makes local UX testing work without an account or secret.
+- `data/catalog.json` is a static test fixture; the browser uses the live Worker catalog.
 - `worker/index.js` exposes separate Betaflight and KAACK Community catalogs and dispatches validated builds to GitHub Actions.
 - `.github/workflows/build-firmware.yml` checks out an approved source tag/branch, builds the selected target and uploads firmware plus a provenance manifest.
 - `.github/workflows/deploy-pages.yml` deploys the static UI to GitHub Pages.
@@ -19,7 +21,7 @@ npm test
 npm run serve
 ```
 
-Open <http://127.0.0.1:4175>. Set `KAACK_PORT` if that port is already in use. Local mode produces a clearly labelled demo package that is **not flashable**. It is there to test the UI, deterministic recipe, status transitions and download interaction before connecting a real builder.
+Open <http://127.0.0.1:4175>. Set `KAACK_PORT` if that port is already in use. The local preview is live-only: without a configured API it shows an explicit unavailable state and never creates a fake or flashable-looking package.
 
 ## Connect the live path
 
@@ -31,7 +33,7 @@ In the repository's GitHub settings, open **Settings → Secrets and variables �
 - `CLOUDFLARE_ACCOUNT_ID`: the Cloudflare account ID used by Wrangler.
 - `WORKER_GITHUB_TOKEN`: a fine-grained GitHub token restricted to `KidCe/KAACKCloudBuild` with Actions read/write access. It is stored inside the Worker as `GITHUB_TOKEN` and is used only to dispatch builds and read their status/artifacts.
 
-After saving them, run **Actions → Deploy KAACK Cloud Builder Worker → Run workflow**. The workflow deploys the Worker and then stores `WORKER_GITHUB_TOKEN` as the Worker runtime secret. It will fail before deployment if that secret is missing, rather than silently publishing a demo-only API.
+After saving them, run **Actions → Deploy KAACK Cloud Builder Worker → Run workflow**. The workflow deploys the Worker and then stores `WORKER_GITHUB_TOKEN` as the Worker runtime secret. It will fail before deployment if that secret is missing, rather than silently publishing an unavailable builder API.
 
 Copy the `workers.dev` URL printed by the successful deployment and add it as the repository Actions variable `KAACK_API_BASE_URL`. Rerun **Deploy KAACK Cloud Builder Pages**. The Pages workflow writes that variable into `runtime-config.js`; no token is included in the static site.
 

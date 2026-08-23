@@ -2,12 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-test('demo catalog contains the builder surface', async () => {
+test('catalog fixture contains the builder surface', async () => {
   const index = await readFile(new URL('../index.html', import.meta.url), 'utf8');
   assert.match(index, /version-disclaimer/);
   assert.match(index, /official Betaflight/);
+  assert.match(index, /kidce\.github\.io\/KidCe-Configurator/);
   const catalog = JSON.parse(await readFile(new URL('../data/catalog.json', import.meta.url)));
-  assert.equal(catalog.mode, 'demo');
+  assert.equal(catalog.mode, 'fixture');
   assert.ok(catalog.targets.some((target) => target.target === 'KAKUTEH7'));
   assert.ok(catalog.targets.some((target) => target.target === 'HDZERO_HALO'));
   assert.ok(catalog.targets.some((target) => target.target === 'MAMBAF722_2022A'));
@@ -56,6 +57,9 @@ test('worker keeps GitHub credentials server-side', async () => {
   assert.match(worker, /headers\.authorization = `Bearer \$\{env\.GITHUB_TOKEN\}`/);
   assert.match(worker, /validateAgainstCatalog/);
   assert.match(worker, /downloadFirmware/);
+  assert.match(worker, /downloadFormat/);
+  assert.match(worker, /Live builder unavailable/);
+  assert.doesNotMatch(worker, /mode: "demo"|Demo mode/);
   assert.match(worker, /object\.httpMetadata\?\.contentDisposition/);
   assert.match(worker, /source_ref/);
   assert.match(worker, /src.*platform/);
@@ -81,4 +85,8 @@ test('builder remembers general options and applies racing defaults', async () =
   assert.match(app, /not the same as Betaflight 4\.5\.3/);
   assert.match(app, /older Betaflight 4\.5 line/);
   assert.match(app, /all fixes from official Betaflight 4\.5\.3/);
+  assert.doesNotMatch(app, /data\/catalog\.json/);
+  assert.doesNotMatch(app, /demoBuild|createDemoDownload|NOT FLASHABLE/);
+  assert.match(app, /Live builder unavailable/);
+  assert.match(app, /Download ZIP artifact/);
 });

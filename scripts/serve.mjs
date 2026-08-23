@@ -13,4 +13,4 @@ const server = createServer(async (request, response) => {
   catch { response.writeHead(404); response.end('Not found'); }
 });
 const port = Number(process.env.KAACK_PORT || 4175);
-server.listen(port, '127.0.0.1', () => console.log(`KAACK Cloud Builder demo: http://127.0.0.1:${port}`));
+server.listen(port, '127.0.0.1', () => console.log(`KAACK Cloud Builder local preview: http://127.0.0.1:${port}`));

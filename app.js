@@ -6,15 +6,31 @@ const DEFAULT_FIRMWARE_LINE = "kaack";
 const DEFAULT_KAACK_RELEASE = "kaack-4.5.3-v19";
 const state = { catalog: null, options: null, releases: [], targets: [], firmwareLine: DEFAULT_FIRMWARE_LINE, live: false, selected: new Set(), build: null };
 
-const fallback = async () => (await fetch("data/catalog.json")).json();
 const api = async (path, init) => { const response = await fetch(`${apiBase}${path}`, init); if (!response.ok) throw new Error(`API ${response.status}`); return response.json(); };
 
 async function loadCatalog() {
-  try { state.catalog = await api("/api/catalog"); state.live = state.catalog.mode === "live"; }
-  catch { state.catalog = await fallback(); state.live = false; }
-  renderCatalog();
-  if (state.live && $('target').value) await loadTargetReleases($('target').value);
-  await loadOptions($('version').value);
+  try {
+    if (!apiBase) throw new Error("The live builder endpoint is not configured.");
+    state.catalog = await api("/api/catalog");
+    if (state.catalog.mode !== "live") throw new Error("The live builder did not return a live catalog.");
+    state.live = true;
+    renderCatalog();
+    if ($('target').value) await loadTargetReleases($('target').value);
+    await loadOptions($('version').value);
+  } catch (error) {
+    setUnavailable(error);
+  }
+}
+
+function setUnavailable(error) {
+  state.live = false;
+  $('connectionBadge').className = "status-pill error";
+  $('connectionBadge').innerHTML = "<i></i> Live builder unavailable";
+  $('availabilityErrorText').textContent = `${error.message} No demo build is available.`;
+  $('availabilityError').classList.remove('hidden');
+  $('builderForm').classList.add('unavailable');
+  $('builderForm').querySelectorAll('select, textarea, button').forEach((control) => { control.disabled = true; });
+  setStatus('error', 'Live builder unavailable', 'The build server could not be reached. Try again later.', 0);
 }
 
 function firmwareLines() {
@@ -52,8 +68,8 @@ function renderLine() {
   $('target').value = preferredTarget?.target || "";
   renderTarget();
   renderReleases(line?.releases || []);
-  $('connectionBadge').className = `status-pill ${state.live ? "live" : "demo"}`;
-  $('connectionBadge').innerHTML = `<i></i> ${state.live ? "Live catalog" : "Demo mode"}`;
+  $('connectionBadge').className = "status-pill live";
+  $('connectionBadge').innerHTML = "<i></i> Live builder";
 }
 
 function renderReleases(releases) {
@@ -67,13 +83,12 @@ function renderReleases(releases) {
 
 async function loadOptions(release) {
   if (!release) return;
-  try { state.options = await api(`/api/options?release=${encodeURIComponent(release)}`); }
-  catch { state.options = state.catalog.options; }
+  state.options = await api(`/api/options?release=${encodeURIComponent(release)}`);
   renderOptions();
 }
 async function loadTargetReleases(target) {
-  try { const detail = await api(`/api/targets/${encodeURIComponent(target)}?firmware=${encodeURIComponent(state.firmwareLine)}`); renderReleases(detail.releases || []); }
-  catch { renderReleases(selectedLine()?.releases || []); }
+  const detail = await api(`/api/targets/${encodeURIComponent(target)}?firmware=${encodeURIComponent(state.firmwareLine)}`);
+  renderReleases(detail.releases || []);
 }
 
 function renderOptions() {
@@ -142,25 +157,59 @@ function updateRecipe() {
 }
 
 async function submitBuild(event) {
-  event.preventDefault(); if ($('buildButton').disabled) return;
+  event.preventDefault();
+  if ($('buildButton').disabled) return;
+  if (!state.live) { setUnavailable(new Error("The live builder is unavailable.")); return; }
   const selectedRelease = state.releases.find((release) => release.release === $('version').value);
   const request = { firmware: $('firmware').value, version: $('version').value, sourceRef: selectedRelease?.ref || selectedRelease?.sourceRef || "", target: $('target').value, flags: getFlags(), builderVersion: "0.2.0" };
   setStatus('running', 'Submitting build', 'Normalizing recipe and checking the configured builder…', 24);
-  try { state.build = state.live ? await api('/api/builds', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(request) }) : await demoBuild(request); pollBuild(state.build); }
+  try { state.build = await api('/api/builds', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(request) }); pollBuild(state.build); }
   catch (error) { setStatus('error', 'Build request failed', error.message, 0); }
 }
 
-async function demoBuild(request) { await wait(500); return { id:`demo-${Date.now().toString(36)}`, mode:'demo', status:'queued', request, cacheKey:await digest(JSON.stringify(request)), downloadUrl:null }; }
 async function pollBuild(build) {
-  const delays = state.live ? [900, 1800, 3500, 5000] : [1100, 1500];
-  for (let i = 0; i < delays.length; i++) { await wait(delays[i]); if (!state.live) { setStatus('success','Demo package ready','The workflow seam is working. This package is intentionally not flashable.',100); showResult({...build,status:'success',downloadUrl:createDemoDownload(build.request)}); return; } try { const next = await api(`/api/builds/${encodeURIComponent(build.id)}`); setStatus(next.status === 'success' ? 'success' : 'running', next.status === 'success' ? 'Build complete' : 'Building firmware', next.message || 'GitHub Actions is compiling the requested target…', next.status === 'success' ? 100 : 35 + i * 17); if (next.status === 'success') { showResult(next); return; } if (next.status === 'failure') throw new Error(next.message || 'The builder failed.'); } catch (error) { if (i === delays.length - 1) setStatus('error','Build status unavailable',error.message,0); } }
+  const delays = [900, 1800, 3500, 5000, 8000, 12000, 15000, 20000];
+  for (let i = 0; i < delays.length; i++) {
+    await wait(delays[i]);
+    try {
+      const next = await api(`/api/builds/${encodeURIComponent(build.id)}`);
+      setStatus(next.status === 'success' ? 'success' : 'running', next.status === 'success' ? 'Build complete' : 'Building firmware', next.message || 'GitHub Actions is compiling the requested target…', next.status === 'success' ? 100 : Math.min(92, 35 + i * 8));
+      if (next.status === 'success') { showResult(next); return; }
+      if (next.status === 'failure') throw new Error(next.message || 'The builder failed.');
+    } catch (error) {
+      if (i === delays.length - 1) setStatus('error','Build status unavailable',error.message,0);
+    }
+  }
 }
 function setStatus(kind,title,text,progress){ $('statusTitle').textContent=title;$('statusText').textContent=text;$('progressBar').style.width=`${progress}%`;$('statusIcon').className=`status-icon ${kind}`;$('statusIcon').textContent=kind==='success'?'✓':kind==='error'?'!':kind==='running'?'…':'·';$('stepQueued').className=progress>=0?'active':'';$('stepBuild').className=progress>=25?'active':'';$('stepReady').className=progress>=100?'active':'';$('buildButton').disabled=kind==='running'; }
-function showResult(build) { const panel=$('resultPanel');panel.classList.remove('hidden');const downloadUrl=build.downloadUrl ? resolveDownloadUrl(build.downloadUrl) : '';const label=build.mode === 'demo' ? 'Download demo package' : downloadUrl.endsWith('/download') ? 'Download firmware HEX' : 'Download Actions artifact';panel.innerHTML=`<div class="result-meta"><span>Build ID <strong>${escapeHtml(build.id || "—")}</strong></span><span>Cache key <strong>${escapeHtml((build.cacheKey || "—").slice(0,18))}</strong></span></div>${downloadUrl ? `<a href="${escapeHtml(downloadUrl)}" download>${label} ↓</a>` : '<span class="field-hint">Artifact URL will be returned by the live worker.</span>'}`; }
+function showResult(build) {
+  const panel = $('resultPanel');
+  panel.classList.remove('hidden');
+  const downloadUrl = build.downloadUrl ? resolveDownloadUrl(build.downloadUrl) : '';
+  const direct = build.downloadFormat === 'firmware';
+  const label = direct ? 'Download firmware' : 'Download ZIP artifact';
+  const note = direct ? '<div class="download-note"><strong>Verified firmware</strong> The worker served the verified firmware file directly.</div>' : '<div class="download-note"><strong>ZIP artifact</strong> Unpack the ZIP and use the descriptive HEX file inside. Keep manifest.json and SHA256SUMS with it.</div>';
+  panel.innerHTML = `<div class="result-meta"><span>Build ID <strong>${escapeHtml(build.id || "—")}</strong></span><span>Cache key <strong>${escapeHtml((build.cacheKey || "—").slice(0,18))}</strong></span></div>${downloadUrl ? `<a href="${escapeHtml(downloadUrl)}" download>${label} ↓</a>${note}` : '<span class="field-hint">The live worker did not return a download URL.</span>'}`;
+}
 function resolveDownloadUrl(url) { try { return new URL(url, apiBase || location.href).href; } catch { return url; } }
-function createDemoDownload(request) { const payload=`KAACK DEMO PACKAGE\nNOT FLASHABLE\n\n${JSON.stringify(request,null,2)}\n`; return URL.createObjectURL(new Blob([payload],{type:'text/plain'})); }
 function escapeHtml(value) { return String(value ?? '').replace(/[&<>'"]/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
 function wait(ms){return new Promise((resolve)=>setTimeout(resolve,ms));}
-async function digest(value){if(!crypto.subtle)return 'local-demo';const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value));return [...new Uint8Array(hash)].map((x)=>x.toString(16).padStart(2,'0')).join('');}
 
-$('builderForm').addEventListener('submit', submitBuild); $('target').addEventListener('change', async () => { renderTarget(); if (state.live) { await loadTargetReleases($('target').value); await loadOptions($('version').value); } updateRecipe(); }); $('version').addEventListener('change', async () => { renderReleaseMeta(); await loadOptions($('version').value); }); $('customFlags').addEventListener('input', updateRecipe); loadCatalog();
+$('builderForm').addEventListener('submit', submitBuild);
+$('target').addEventListener('change', async () => {
+  renderTarget();
+  if (state.live) {
+    try { await loadTargetReleases($('target').value); await loadOptions($('version').value); }
+    catch (error) { setUnavailable(error); }
+  }
+  updateRecipe();
+});
+$('version').addEventListener('change', async () => {
+  renderReleaseMeta();
+  if (state.live) {
+    try { await loadOptions($('version').value); }
+    catch (error) { setUnavailable(error); }
+  }
+});
+$('customFlags').addEventListener('input', updateRecipe);
+loadCatalog();

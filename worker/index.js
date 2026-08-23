@@ -219,7 +219,7 @@ async function buildStatus(env, id) {
   if (run.conclusion !== "success") return { id, mode: "github-actions", status: "failure", message: `Workflow finished with ${run.conclusion || "unknown"}.`, workflowUrl: run.html_url };
   const artifacts = await gh(env, `/repos/${env.GITHUB_REPOSITORY}/actions/runs/${run.id}/artifacts`);
   const artifact = artifacts.artifacts?.find((x) => x.name === `kaack-${id}`) || artifacts.artifacts?.[0];
-  return { id, mode: "github-actions", status: "success", message: env.FIRMWARE_BUCKET ? "Build finished. Download the verified firmware file." : "Build finished. Download the GitHub Actions artifact ZIP and verify its manifest.", workflowUrl: run.html_url, downloadUrl: `/api/builds/${id}/download`, artifactName: artifact?.name };
+  return { id, mode: "github-actions", status: "success", message: env.FIRMWARE_BUCKET ? "Build finished. Download the verified firmware file." : "Build finished. Download the GitHub Actions artifact ZIP and verify its manifest.", downloadFormat: env.FIRMWARE_BUCKET ? "firmware" : "zip", workflowUrl: run.html_url, downloadUrl: `/api/builds/${id}/download`, artifactName: artifact?.name };
 }
 async function downloadFirmware(env, id) {
   if (env.FIRMWARE_BUCKET) {
@@ -243,7 +243,7 @@ export default { async fetch(request, env) {
   if (request.method === "OPTIONS") return new Response(null, { headers: JSON_HEADERS });
   const url = new URL(request.url);
   try {
-    if (url.pathname === "/api/health") return json({ ok: true, service: "kaack-cloud-builder", mode: hasBuilder(env) ? "github-actions" : "demo", sourceConfigured: Boolean(sourceRepository(env)) });
+    if (url.pathname === "/api/health") return json({ ok: true, service: "kaack-cloud-builder", mode: hasBuilder(env) ? "github-actions" : "unavailable", sourceConfigured: Boolean(sourceRepository(env)), liveBuilderAvailable: hasBuilder(env) });
     if (url.pathname === "/api/catalog" && request.method === "GET") return json(await catalog(env), 200, { "cache-control": "public, max-age=300" });
     if (url.pathname === "/api/options" && request.method === "GET") {
       if (sourceRepository(env)) return json(DEFAULT_OPTIONS, 200, { "cache-control": "public, max-age=3600" });
@@ -262,7 +262,7 @@ export default { async fetch(request, env) {
     if (url.pathname === "/api/builds" && request.method === "POST") {
       const recipe = normalize(await request.json());
       const id = crypto.randomUUID();
-      if (!hasBuilder(env)) return json({ id, mode: "demo", status: "queued", cacheKey: await cacheKey(recipe), request: recipe, message: sourceRepository(env) ? "Demo mode: GitHub builder credentials are not configured." : "Demo mode: configure the firmware source and GitHub builder secrets first." }, 202);
+      if (!hasBuilder(env)) return json({ error: "Live builder unavailable. Configure the GitHub Actions builder before submitting builds." }, 503);
       const validated = await validateAgainstCatalog(env, recipe);
       const requestWithRef = { ...recipe, sourceRef: validated.sourceRef || recipe.sourceRef || recipe.version };
       return json(await dispatch(env, requestWithRef, id), 202);

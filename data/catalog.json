@@ -1,6 +1,6 @@
 {
-  "mode": "demo",
-  "source": "Local demo catalog. Configure the Cloudflare Worker for the live Betaflight catalog.",
+  "mode": "fixture",
+  "source": "Static test fixture. The browser requires the live Cloudflare Worker catalog.",
   "firmware": [{ "id": "kaack", "label": "KAACK Community Build", "repository": "configure-in-worker" }, { "id": "betaflight", "label": "Betaflight", "repository": "betaflight/betaflight" }],
   "firmwareLines": [
     {
