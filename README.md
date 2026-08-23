@@ -28,15 +28,16 @@ Deploy `worker/` to Cloudflare Workers (locally with `cd worker; npx wrangler de
 - `GITHUB_TOKEN` as a Worker secret with the minimum `Actions: write` and `Actions: read` access on the builder repository.
 - `GITHUB_REPOSITORY` as a Worker variable naming the builder repository, such as `OWNER/REPOSITORY`.
 - `GITHUB_REF` as the workflow-dispatch branch, normally `main`.
-- `FIRMWARE_REPOSITORY` as the approved KAACK firmware source.
-- `FIRMWARE_SOURCE_REFS` as a JSON array mapping the UI release id to a real Git tag or branch. The exact KAACK source is intentionally not guessed by this project and must be configured explicitly.
+- `FIRMWARE_REPOSITORY` as `limonspb/betaflight`, the public KAACK source fork maintained by Ivan Efimov (Limon).
+- `FIRMWARE_CONFIG_REPOSITORY` as `betaflight/config` for the unified flight-controller configuration targets.
+- `FIRMWARE_SOURCE_REFS` as a JSON array mapping the UI release ids to the real source branches. The racing line is displayed as `KAACK 4.5.3 / V19` but uses the technical branch `KAACK-4.5.0`; the newer line uses `KAACK-2025.12`.
 - Optional `CATALOG_SOURCE_REF` to choose which source ref supplies the live target list.
 - For the upstream fallback, use `UPSTREAM_BUILD_API` and `CATALOG_PROBE_TARGET` instead.
 - In the builder repository, set the Actions variable `FIRMWARE_REPOSITORY` to the same approved firmware source.
 
 When Pages and the Worker use different hostnames, set `window.KAACK_CONFIG.apiBase` in `index.html` to the Worker URL. With a same-origin Worker route, the empty value already uses `/api/*`.
 
-The Worker never accepts arbitrary shell arguments. The live source catalog is generated from the configured repository's `src/main/target` tree, releases are mapped to allow-listed refs, and flags are normalized and restricted to uppercase `USE_*` defines. The workflow validates them again before calling `make`. This prevents a visible label such as `4.5.3` from being treated as a Git ref when the selected KAACK source does not actually contain that ref.
+The Worker never accepts arbitrary shell arguments. The live source catalog is generated from classic `src/platform/*/target/*` targets plus `src/config/configs/*/config.h` targets from the checked-out config submodule (or the config repository's `master` for the older branch). Releases are mapped to allow-listed refs, and flags are normalized and restricted to uppercase `USE_*` defines. The workflow validates them again before calling `make`. This keeps the community-facing label `KAACK 4.5.3 / V19` separate from the technical source ref `KAACK-4.5.0`.
 
 For the first live test, the artifact download is the GitHub Actions artifact ZIP. For the direct firmware path, create an R2 bucket, add the `FIRMWARE_BUCKET` binding in `worker/wrangler.toml`, set the `R2_BUCKET_NAME` Actions variable plus the R2/Cloudflare secrets, and let the workflow publish the verified `.hex`/`.uf2`, `manifest.json` and checksum. The Worker then serves `/api/builds/{id}/download`. GitHub artifacts remain short-lived build outputs, not the permanent firmware cache.
 

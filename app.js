@@ -2,6 +2,7 @@ const config = window.KAACK_CONFIG || {};
 const apiBase = (config.apiBase || "").replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const GENERAL_OPTIONS_KEY = "kaack-cloud-builder.general-options";
+const DEFAULT_KAACK_RELEASE = "kaack-4.5.3-v19";
 const state = { catalog: null, options: null, releases: [], live: false, selected: new Set(), build: null };
 
 const fallback = async () => (await fetch("data/catalog.json")).json();
@@ -32,7 +33,7 @@ function renderReleases(releases) {
   $('version').innerHTML = usable.map((x) => `<option value="${escapeHtml(x.release)}">${escapeHtml(x.label || `${x.release} · ${x.type || "Release"}`)}</option>`).join("");
   if (!usable.length) $('version').innerHTML = `<option value="">No cloud-build releases</option>`;
   state.releases = usable;
-  $('version').value = usable.find((x) => x.release === "4.5.3")?.release || usable[0]?.release || "";
+  $('version').value = usable.find((x) => x.release === DEFAULT_KAACK_RELEASE)?.release || usable.find((x) => x.release === "4.5.3")?.release || usable[0]?.release || "";
   renderReleaseMeta();
 }
 

@@ -3,7 +3,8 @@
   "source": "Local demo catalog. Configure the Cloudflare Worker for the live Betaflight catalog.",
   "firmware": [{ "id": "KAACK", "label": "KAACK Community Build", "repository": "configure-in-worker" }],
   "releases": [
-    { "release": "2025.12.0-KAACK", "type": "Community", "cloudBuild": true, "date": "Demo release" },
+    { "release": "kaack-4.5.3-v19", "label": "KAACK 4.5.3 / V19", "type": "Community", "cloudBuild": true, "date": "KAACK-4.5.0 · limonspb/betaflight", "ref": "KAACK-4.5.0" },
+    { "release": "kaack-2025.12", "label": "KAACK 2025.12", "type": "Community", "cloudBuild": true, "date": "KAACK-2025.12 · limonspb/betaflight", "ref": "KAACK-2025.12" },
     { "release": "2026.6.1", "type": "Stable", "cloudBuild": true, "date": "Upstream compatible" },
     { "release": "2025.12.5", "type": "Stable", "cloudBuild": true, "date": "Upstream compatible" },
     { "release": "4.5.5", "type": "Stable", "cloudBuild": true, "date": "Upstream compatible" },

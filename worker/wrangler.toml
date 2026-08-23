@@ -3,14 +3,16 @@ main = "index.js"
 compatibility_date = "2026-08-23"
 
 [vars]
+FIRMWARE_REPOSITORY = "limonspb/betaflight"
+FIRMWARE_CONFIG_REPOSITORY = "betaflight/config"
+FIRMWARE_SOURCE_REFS = '[{"release":"kaack-4.5.3-v19","label":"KAACK 4.5.3 / V19","type":"Community","ref":"KAACK-4.5.0"},{"release":"kaack-2025.12","label":"KAACK 2025.12","type":"Community","ref":"KAACK-2025.12"}]'
+GITHUB_REPOSITORY = "KidCe/KAACKCloudBuild"
+GITHUB_REF = "main"
 # Set these in the Cloudflare dashboard or with `wrangler secret put`.
 # UPSTREAM_BUILD_API = "https://build.betaflight.com"
-# GITHUB_REPOSITORY = "OWNER/REPOSITORY"
-# GITHUB_REF = "main"
 # CATALOG_PROBE_TARGET = "KAKUTEH7"
-# FIRMWARE_REPOSITORY = "OWNER/KAACK-FIRMWARE"
-# FIRMWARE_SOURCE_REFS = '[{"release":"kaack-4.5.3","label":"KAACK 4.5.3","type":"Community","ref":"REPLACE_WITH_REAL_TAG"}]'
-# CATALOG_SOURCE_REF = "REPLACE_WITH_REAL_TAG"
+# The public KAACK source is the Limon/Ivan Efimov Betaflight fork.
+# CATALOG_SOURCE_REF = "KAACK-4.5.0"
 # PUBLIC_API_BASE_URL = "https://kaack-cloud-builder-api.example.workers.dev"
 
 # Enable after creating the bucket and adding the matching R2 binding.

@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      FIRMWARE_REPOSITORY: ${{ vars.FIRMWARE_REPOSITORY }}
+      FIRMWARE_REPOSITORY: ${{ vars.FIRMWARE_REPOSITORY || 'limonspb/betaflight' }}
       VERSION: ${{ inputs.version }}
       SOURCE_REF: ${{ inputs.source_ref }}
       TARGET: ${{ inputs.target }}
@@ -48,16 +48,22 @@ jobs:
         shell: bash
         run: |
           test -n "${FIRMWARE_REPOSITORY}" || { echo "Set the repository Actions variable FIRMWARE_REPOSITORY to the approved KAACK fork before building."; exit 1; }
+          test "${FIRMWARE_REPOSITORY}" = "limonspb/betaflight" || { echo "Only limonspb/betaflight is approved for KAACK builds."; exit 1; }
           test -n "${SOURCE_REF}" || { echo "The builder must provide an approved source ref."; exit 1; }
           [[ "${SOURCE_REF}" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "Invalid source ref"; exit 1; }
+          case "${SOURCE_REF}" in
+            KAACK-4.5.0|KAACK-2025.12) ;;
+            *) echo "Source ref is not an approved KAACK branch: ${SOURCE_REF}"; exit 1 ;;
+          esac
 
       - name: Checkout firmware source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ env.FIRMWARE_REPOSITORY }}
           ref: ${{ env.SOURCE_REF }}
           path: firmware
           fetch-depth: 1
+          submodules: recursive
 
       - name: Cache firmware toolchain
         uses: actions/cache@v4
@@ -72,6 +78,17 @@ jobs:
         shell: bash
         run: make arm_sdk_install
 
+      - name: Install UF2 tool when supported
+        if: steps.toolchain-cache.outputs.cache-hit != 'true'
+        working-directory: firmware
+        shell: bash
+        run: |
+          if grep -Rqs 'picotool_install' Makefile mk; then
+            make picotool_install
+          else
+            echo "This KAACK branch does not provide picotool_install; HEX output remains available."
+          fi
+
       - name: Validate and build target
         working-directory: firmware
         shell: bash
@@ -79,14 +96,30 @@ jobs:
           set -euo pipefail
           test "${TARGET}" = "${TARGET^^}" || { echo "Target must be uppercase"; exit 1; }
           [[ "${TARGET}" =~ ^[A-Z0-9_-]+$ ]] || { echo "Invalid target"; exit 1; }
+          printf '%s' "${FLAGS_JSON}" | jq -e 'type == "array" and all(.[]; test("^USE_[A-Z0-9_]+$"))' >/dev/null || { echo "Invalid flags JSON"; exit 1; }
           mapfile -t flags < <(printf '%s' "${FLAGS_JSON}" | jq -r '.[]')
-          extra_flags="-DCLOUD_BUILD -DBUILD_KEY=${BUILD_ID} -DRELEASE_NAME=${VERSION}"
+          extra_flags="-DCLOUD_BUILD -DBUILD_KEY=\\\"${BUILD_ID}\\\" -DRELEASE_NAME=\\\"${VERSION}\\\""
           for flag in "${flags[@]}"; do
             [[ "${flag}" =~ ^USE_[A-Z0-9_]+$ ]] || { echo "Invalid build flag: ${flag}"; exit 1; }
             extra_flags+=" -D${flag}"
           done
           make configs
-          make "${TARGET}" EXTRA_FLAGS="${extra_flags}"
+          if [[ -f "src/config/configs/${TARGET}/config.h" ]]; then
+            build_command=(make hex CONFIG="${TARGET}" EXTRA_FLAGS="${extra_flags}")
+            uf2_command=(make uf2 CONFIG="${TARGET}" EXTRA_FLAGS="${extra_flags}")
+          elif find src/platform -path "*/target/${TARGET}/target.mk" -print -quit | grep -q .; then
+            build_command=(make hex TARGET="${TARGET}" EXTRA_FLAGS="${extra_flags}")
+            uf2_command=(make uf2 TARGET="${TARGET}" EXTRA_FLAGS="${extra_flags}")
+          else
+            echo "Target ${TARGET} is not present in the source checkout or hydrated config repository."
+            exit 1
+          fi
+          echo "Building HEX with: ${build_command[*]}"
+          "${build_command[@]}"
+          echo "Building optional UF2 with: ${uf2_command[*]}"
+          if ! "${uf2_command[@]}"; then
+            echo "UF2 output is unavailable for ${TARGET}; continuing with the verified HEX artifact."
+          fi
 
       - name: Collect firmware and provenance
         shell: bash
@@ -94,10 +127,20 @@ jobs:
           set -euo pipefail
           mkdir -p output
           find firmware/obj -maxdepth 1 -type f \( -name '*.hex' -o -name '*.uf2' \) -exec cp {} output/ \;
-          test -n "$(find output -type f | head -1)" || { echo "No firmware artifact found"; exit 1; }
-          cat > output/manifest.json <<EOF
-          {"buildId":"${BUILD_ID}","repository":"${FIRMWARE_REPOSITORY}","version":"${VERSION}","target":"${TARGET}","flags":${FLAGS_JSON},"sourceCommit":"$(git -C firmware rev-parse HEAD)","builtAt":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
-          EOF
+          test -n "$(find output -maxdepth 1 -type f -name '*.hex' -print -quit)" || { echo "No HEX firmware artifact found"; exit 1; }
+          source_commit="$(git -C firmware rev-parse HEAD)"
+          config_commit="$(git -C firmware/src/config rev-parse HEAD 2>/dev/null || echo external-config-master)"
+          jq -n \
+            --arg buildId "${BUILD_ID}" \
+            --arg repository "${FIRMWARE_REPOSITORY}" \
+            --arg version "${VERSION}" \
+            --arg sourceRef "${SOURCE_REF}" \
+            --arg target "${TARGET}" \
+            --arg sourceCommit "${source_commit}" \
+            --arg configCommit "${config_commit}" \
+            --arg builtAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --argjson flags "${FLAGS_JSON}" \
+            '{buildId:$buildId,repository:$repository,version:$version,sourceRef:$sourceRef,target:$target,flags:$flags,sourceCommit:$sourceCommit,configCommit:$configCommit,builtAt:$builtAt}' > output/manifest.json
           sha256sum output/* > output/SHA256SUMS
 
       - name: Upload firmware artifact
@@ -120,9 +163,10 @@ jobs:
             echo "R2 not configured; keeping the GitHub Actions artifact only."
             exit 0
           fi
-          firmware_file="$(find output -maxdepth 1 -type f \( -name '*.hex' -o -name '*.uf2' \) -print -quit)"
-          extension="${firmware_file##*.}"
           endpoint="https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com"
-          aws s3 cp "${firmware_file}" "s3://${R2_BUCKET_NAME}/firmware/${BUILD_ID}.${extension}" --endpoint-url "${endpoint}"
+          while IFS= read -r firmware_file; do
+            extension="${firmware_file##*.}"
+            aws s3 cp "${firmware_file}" "s3://${R2_BUCKET_NAME}/firmware/${BUILD_ID}.${extension}" --endpoint-url "${endpoint}"
+          done < <(find output -maxdepth 1 -type f \( -name '*.hex' -o -name '*.uf2' \) -print)
           aws s3 cp output/manifest.json "s3://${R2_BUCKET_NAME}/firmware/${BUILD_ID}.json" --endpoint-url "${endpoint}"
           aws s3 cp output/SHA256SUMS "s3://${R2_BUCKET_NAME}/firmware/${BUILD_ID}.SHA256SUMS" --endpoint-url "${endpoint}"

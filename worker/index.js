@@ -7,6 +7,7 @@ const JSON_HEADERS = {
 
 const upstream = (env) => (env.UPSTREAM_BUILD_API || "https://build.betaflight.com").replace(/\/$/, "");
 const sourceRepository = (env) => String(env.FIRMWARE_REPOSITORY || "").trim();
+const configRepository = (env) => String(env.FIRMWARE_CONFIG_REPOSITORY || "betaflight/config").trim();
 const hasBuilder = (env) => Boolean(env.GITHUB_TOKEN && env.GITHUB_REPOSITORY && sourceRepository(env));
 const json = (body, status = 200, extra = {}) => new Response(JSON.stringify(body), { status, headers: { ...JSON_HEADERS, ...extra } });
 const validToken = (value) => typeof value === "string" && /^[A-Z][A-Z0-9_]*$/.test(value) && (value.startsWith("USE_") || value === "CLOUD_BUILD");
@@ -91,15 +92,30 @@ const gh = async (env, path, init = {}) => {
   return githubJson(env, path, { ...init, headers: { "content-type": "application/json", ...(init.headers || {}) } });
 };
 
-const sourcePath = (env, path, ref) => `/repos/${sourceRepository(env)}/contents/${path}?ref=${encodeURIComponent(ref)}`;
-const sourceTargets = async (env, ref) => {
-  const items = await githubJson(env, sourcePath(env, "src/main/target", ref));
-  return items.filter((item) => item.type === "dir").map((item) => ({ target: item.name, manufacturer: "KAACK source", group: "source" })).sort((a, b) => a.target.localeCompare(b.target));
+const gitTree = async (env, repository, ref) => {
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) throw new Error("Invalid configured GitHub repository");
+  const tree = await githubJson(env, `/repos/${repository}/git/trees/${encodeURIComponent(ref)}?recursive=1`);
+  if (tree.truncated) throw new Error(`GitHub tree is truncated for ${repository}@${ref}; target catalog cannot be trusted`);
+  return tree.tree || [];
 };
-const sourceTargetExists = async (env, target, ref) => {
-  try { await githubJson(env, sourcePath(env, `src/main/target/${encodeURIComponent(target)}`, ref)); return true; }
-  catch (error) { if (error.message === "GitHub API 404") return false; throw error; }
+const sourceTargetIndex = async (env, ref) => {
+  const sourceTree = await gitTree(env, sourceRepository(env), ref);
+  const classicTargets = sourceTree
+    .map((item) => item.path.match(/^src\/platform\/[^/]+\/target\/([^/]+)\/target\.mk$/)?.[1])
+    .filter(Boolean)
+    .map((target) => ({ target, manufacturer: "KAACK source target", group: "source" }));
+  const configSubmodule = sourceTree.find((item) => item.path === "src/config" && item.type === "commit");
+  const configRef = configSubmodule?.sha || "master";
+  const configTree = await gitTree(env, configRepository(env), configRef);
+  const configTargets = configTree
+    .map((item) => item.path.match(/^configs\/([^/]+)\/config\.h$/)?.[1])
+    .filter(Boolean)
+    .map((target) => ({ target, manufacturer: "Betaflight config", group: "config" }));
+  return [...new Map([...classicTargets, ...configTargets].map((item) => [item.target, item])).values()]
+    .sort((a, b) => a.target.localeCompare(b.target));
 };
+const sourceTargets = async (env, ref) => sourceTargetIndex(env, ref);
+const sourceTargetExists = async (env, target, ref) => (await sourceTargetIndex(env, ref)).some((item) => item.target === target);
 const sourceCatalog = async (env) => {
   const releases = sourceRefs(env);
   if (!releases.length) throw new Error("Configure FIRMWARE_SOURCE_REFS for the selected firmware repository");
@@ -111,8 +127,7 @@ const sourceCatalog = async (env) => {
 };
 const validateAgainstSource = async (env, recipe) => {
   const ref = sourceRefFor(env, recipe);
-  const response = await fetch(`https://api.github.com${sourcePath(env, `src/main/target/${encodeURIComponent(recipe.target)}`, ref)}`, { headers: { accept: "application/vnd.github+json", "user-agent": "kaack-cloud-builder", ...(env.GITHUB_TOKEN ? { authorization: `Bearer ${env.GITHUB_TOKEN}` } : {}) } });
-  if (!response.ok) throw new Error("Target is not present in the selected KAACK source ref");
+  if (!(await sourceTargetExists(env, recipe.target, ref))) throw new Error("Target is not present in the selected KAACK source ref or its config repository");
   return { sourceRef: ref };
 };
 const validateAgainstCatalog = async (env, recipe) => {
