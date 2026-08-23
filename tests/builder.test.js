@@ -34,6 +34,7 @@ test('workflow validates user-controlled flags before make', async () => {
   assert.match(workflow, /FIRMWARE_REPOSITORY/);
   assert.match(workflow, /approved KAACK fork/);
   assert.match(workflow, /firmware_stem=/);
+  assert.match(workflow, /firmware_stem="\$\(slug "\$\{REQUEST_TARGET\}"\)_KAACK_/);
   assert.match(workflow, /DIGIOSD/);
   assert.match(workflow, /content-disposition/);
   assert.match(workflow, /firmwareFileName/);

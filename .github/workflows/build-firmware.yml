@@ -190,7 +190,7 @@ jobs:
           for flag in "${flags[@]}"; do flag_tokens+=("$(flag_slug "${flag}")"); done
           flags_slug="$(IFS=_; printf '%s' "${flag_tokens[*]}")"
           [[ -n "${flags_slug}" ]] || flags_slug="NOFLAGS"
-          firmware_stem="KAACK_$(slug "${VERSION}")_$(slug "${REQUEST_TARGET}")_${flags_slug}"
+          firmware_stem="$(slug "${REQUEST_TARGET}")_KAACK_$(slug "${VERSION}")_${flags_slug}"
           hex_source="$(find firmware/obj -maxdepth 1 -type f -name '*.hex' -size +0c -print -quit)"
           test -n "${hex_source}" || { echo "No non-empty HEX firmware artifact found"; exit 1; }
           hex_filename="${firmware_stem}.hex"
