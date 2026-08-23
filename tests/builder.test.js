@@ -20,7 +20,7 @@ test('workflow validates user-controlled flags before make', async () => {
   assert.match(workflow, /make arm_sdk_install/);
   assert.match(workflow, /submodules: recursive/);
   assert.match(workflow, /picotool_install/);
-  assert.match(workflow, /build_command=\(make "\$\{target\}"/);
+  assert.match(workflow, /build_command=\(make -j7 "\$\{target\}"/);
   assert.match(workflow, /make uf2 CONFIG/);
   assert.match(workflow, /config_ref/);
   assert.match(workflow, /compatible pinned config ref/);

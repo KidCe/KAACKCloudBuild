@@ -136,10 +136,10 @@ jobs:
             make configs
           fi
           if [[ -f "src/config/configs/${target}/config.h" ]]; then
-            build_command=(make "${target}" EXTRA_FLAGS="${extra_flags}")
+            build_command=(make -j7 "${target}" EXTRA_FLAGS="${extra_flags}")
             uf2_command=(make uf2 CONFIG="${target}" EXTRA_FLAGS="${extra_flags}")
           elif find src/platform -path "*/target/${target}/target.mk" -print -quit | grep -q .; then
-            build_command=(make "${target}" EXTRA_FLAGS="${extra_flags}")
+            build_command=(make -j7 "${target}" EXTRA_FLAGS="${extra_flags}")
             uf2_command=(make uf2 TARGET="${target}" EXTRA_FLAGS="${extra_flags}")
           else
             echo "Target ${target} is not present in the source checkout or hydrated config repository."
