@@ -56,7 +56,7 @@ const parseJson = (value, fallback) => {
 const sourceRefs = (env) => {
   const configured = parseJson(env.FIRMWARE_SOURCE_REFS, null);
   if (configured !== null) {
-    if (!Array.isArray(configured) || !configured.length || configured.some((x) => !x || !/^[A-Za-z0-9._-]+$/.test(x.release) || !/^[A-Za-z0-9._\/-]+$/.test(x.ref))) throw new Error("FIRMWARE_SOURCE_REFS must be a non-empty JSON array of safe release/ref entries");
+    if (!Array.isArray(configured) || !configured.length || configured.some((x) => !x || !/^[A-Za-z0-9._-]+$/.test(x.release) || !/^[A-Za-z0-9._\/-]+$/.test(x.ref) || (x.configRef && !/^[A-Za-z0-9._\/-]+$/.test(x.configRef)))) throw new Error("FIRMWARE_SOURCE_REFS must be a non-empty JSON array of safe release/ref entries");
     return configured;
   }
   return [];
@@ -98,14 +98,14 @@ const gitTree = async (env, repository, ref) => {
   if (tree.truncated) throw new Error(`GitHub tree is truncated for ${repository}@${ref}; target catalog cannot be trusted`);
   return tree.tree || [];
 };
-const sourceTargetIndex = async (env, ref) => {
+const sourceTargetIndex = async (env, ref, configuredConfigRef = "") => {
   const sourceTree = await gitTree(env, sourceRepository(env), ref);
   const classicTargets = sourceTree
     .map((item) => item.path.match(/^src\/platform\/[^/]+\/target\/([^/]+)\/target\.mk$/)?.[1])
     .filter(Boolean)
     .map((target) => ({ target, manufacturer: "KAACK source target", group: "source" }));
   const configSubmodule = sourceTree.find((item) => item.path === "src/config" && item.type === "commit");
-  const configRef = configSubmodule?.sha || "master";
+  const configRef = configuredConfigRef || configSubmodule?.sha || "master";
   const configTree = await gitTree(env, configRepository(env), configRef);
   const configTargets = configTree
     .map((item) => item.path.match(/^configs\/([^/]+)\/config\.h$/)?.[1])
@@ -114,20 +114,21 @@ const sourceTargetIndex = async (env, ref) => {
   return [...new Map([...classicTargets, ...configTargets].map((item) => [item.target, item])).values()]
     .sort((a, b) => a.target.localeCompare(b.target));
 };
-const sourceTargets = async (env, ref) => sourceTargetIndex(env, ref);
-const sourceTargetExists = async (env, target, ref) => (await sourceTargetIndex(env, ref)).some((item) => item.target === target);
+const sourceTargets = async (env, ref, configRef) => sourceTargetIndex(env, ref, configRef);
+const sourceTargetExists = async (env, target, ref, configRef) => (await sourceTargetIndex(env, ref, configRef)).some((item) => item.target === target);
 const sourceCatalog = async (env) => {
   const releases = sourceRefs(env);
   if (!releases.length) throw new Error("Configure FIRMWARE_SOURCE_REFS for the selected firmware repository");
   const refs = env.CATALOG_SOURCE_REF ? releases.filter((x) => x.ref === env.CATALOG_SOURCE_REF) : releases;
   if (!refs.length) throw new Error("CATALOG_SOURCE_REF is not one of the configured source refs");
-  const targetLists = await Promise.all(refs.map((x) => sourceTargets(env, x.ref)));
+  const targetLists = await Promise.all(refs.map((x) => sourceTargets(env, x.ref, x.configRef)));
   const targets = [...new Map(targetLists.flat().map((x) => [x.target, x])).values()].sort((a, b) => a.target.localeCompare(b.target));
   return { mode: "live", source: `github:${sourceRepository(env)}`, firmware: [{ id: "KAACK", label: "KAACK Community" }], releases: releases.map((x) => ({ ...x, cloudBuild: true })), targets, options: DEFAULT_OPTIONS };
 };
 const validateAgainstSource = async (env, recipe) => {
   const ref = sourceRefFor(env, recipe);
-  if (!(await sourceTargetExists(env, recipe.target, ref))) throw new Error("Target is not present in the selected KAACK source ref or its config repository");
+  const entry = sourceRefs(env).find((x) => x.ref === ref && x.release === recipe.version);
+  if (!(await sourceTargetExists(env, recipe.target, ref, entry?.configRef))) throw new Error("Target is not present in the selected KAACK source ref or its config repository");
   return { sourceRef: ref };
 };
 const validateAgainstCatalog = async (env, recipe) => {
@@ -152,7 +153,7 @@ async function catalog(env) {
 }
 async function targetCatalog(env, target) {
   if (sourceRepository(env)) {
-    const releases = (await Promise.all(sourceRefs(env).map(async (entry) => (await sourceTargetExists(env, target, entry.ref)) ? { ...entry, cloudBuild: true } : null))).filter(Boolean);
+    const releases = (await Promise.all(sourceRefs(env).map(async (entry) => (await sourceTargetExists(env, target, entry.ref, entry.configRef)) ? { ...entry, cloudBuild: true } : null))).filter(Boolean);
     return { target, releases };
   }
   const response = await fetch(`${upstream(env)}/api/targets/${encodeURIComponent(target)}`);
@@ -160,8 +161,9 @@ async function targetCatalog(env, target) {
 }
 async function dispatch(env, recipe, id) {
   const sourceRef = sourceRepository(env) ? sourceRefFor(env, recipe) : recipe.sourceRef || recipe.version;
+  const sourceEntry = sourceRefs(env).find((entry) => entry.release === recipe.version);
   const path = `/repos/${env.GITHUB_REPOSITORY}/actions/workflows/build-firmware.yml/dispatches`;
-  await gh(env, path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ref: env.GITHUB_REF || "main", inputs: { build_id: id, version: recipe.version, source_ref: sourceRef, target: recipe.target, flags_json: JSON.stringify(recipe.flags) } }) });
+  await gh(env, path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ref: env.GITHUB_REF || "main", inputs: { build_id: id, version: recipe.version, source_ref: sourceRef, config_ref: sourceEntry?.configRef || "", target: recipe.target, flags_json: JSON.stringify(recipe.flags) } }) });
   return { id, mode: "github-actions", status: "queued", cacheKey: await cacheKey({ ...recipe, sourceRef }), message: "Workflow dispatched. Polling GitHub Actions for the build result." };
 }
 async function locateRun(env, id) { const data = await gh(env, `/repos/${env.GITHUB_REPOSITORY}/actions/runs?event=workflow_dispatch&per_page=30`); return data.workflow_runs?.find((run) => run.display_title === `KAACK build ${id}` || run.name === `KAACK build ${id}`); }

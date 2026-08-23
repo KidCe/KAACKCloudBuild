@@ -19,6 +19,8 @@ test('workflow validates user-controlled flags before make', async () => {
   assert.match(workflow, /picotool_install/);
   assert.match(workflow, /make hex CONFIG/);
   assert.match(workflow, /make uf2 CONFIG/);
+  assert.match(workflow, /config_ref/);
+  assert.match(workflow, /compatible pinned config ref/);
   assert.match(workflow, /No HEX firmware artifact found/);
   assert.match(workflow, /limonspb\/betaflight/);
   assert.match(workflow, /upload-artifact@v4/);
@@ -36,6 +38,7 @@ test('worker keeps GitHub credentials server-side', async () => {
   assert.match(worker, /src.*platform/);
   assert.match(worker, /src.*config/);
   assert.match(worker, /gitTree/);
+  assert.match(worker, /configRef/);
   assert.match(worker, /\^\[A-Z0-9_-\]\+\$/);
   assert.doesNotMatch(await readFile(new URL('../app.js', import.meta.url), 'utf8'), /GITHUB_TOKEN/);
 });

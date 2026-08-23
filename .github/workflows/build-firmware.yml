@@ -12,6 +12,11 @@ on:
         description: "Display release identifier"
         required: true
         type: string
+      config_ref:
+        description: "Optional pinned betaflight/config ref for legacy KAACK branches"
+        required: false
+        default: ""
+        type: string
       source_ref:
         description: "Validated Git tag or branch to check out"
         required: true
@@ -40,6 +45,7 @@ jobs:
       FIRMWARE_REPOSITORY: ${{ vars.FIRMWARE_REPOSITORY || 'limonspb/betaflight' }}
       VERSION: ${{ inputs.version }}
       SOURCE_REF: ${{ inputs.source_ref }}
+      CONFIG_REF: ${{ inputs.config_ref }}
       REQUEST_TARGET: ${{ inputs.target }}
       BUILD_ID: ${{ inputs.build_id }}
       FLAGS_JSON: ${{ inputs.flags_json }}
@@ -51,8 +57,10 @@ jobs:
           test "${FIRMWARE_REPOSITORY}" = "limonspb/betaflight" || { echo "Only limonspb/betaflight is approved for KAACK builds."; exit 1; }
           test -n "${SOURCE_REF}" || { echo "The builder must provide an approved source ref."; exit 1; }
           [[ "${SOURCE_REF}" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "Invalid source ref"; exit 1; }
+          [[ -z "${CONFIG_REF}" || "${CONFIG_REF}" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "Invalid config ref"; exit 1; }
           case "${SOURCE_REF}" in
-            KAACK-4.5.0|KAACK-2025.12) ;;
+            KAACK-4.5.0) test "${CONFIG_REF}" = "9a9f899aab4c4ffaa74f973a643447b48453ff54" || { echo "KAACK-4.5.0 requires its compatible pinned config ref."; exit 1; } ;;
+            KAACK-2025.12) test -z "${CONFIG_REF}" || { echo "KAACK-2025.12 must use its checked-out config submodule."; exit 1; } ;;
             *) echo "Source ref is not an approved KAACK branch: ${SOURCE_REF}"; exit 1 ;;
           esac
 
@@ -104,7 +112,13 @@ jobs:
             [[ "${flag}" =~ ^USE_[A-Z0-9_]+$ ]] || { echo "Invalid build flag: ${flag}"; exit 1; }
             extra_flags+=" -D${flag}"
           done
-          make configs
+          if [[ -n "${CONFIG_REF}" ]]; then
+            rm -rf src/config
+            git clone --depth 1 https://github.com/betaflight/config src/config
+            git -C src/config checkout --detach "${CONFIG_REF}"
+          else
+            make configs
+          fi
           if [[ -f "src/config/configs/${target}/config.h" ]]; then
             build_command=(make hex CONFIG="${target}" EXTRA_FLAGS="${extra_flags}")
             uf2_command=(make uf2 CONFIG="${target}" EXTRA_FLAGS="${extra_flags}")
@@ -136,12 +150,13 @@ jobs:
             --arg repository "${FIRMWARE_REPOSITORY}" \
             --arg version "${VERSION}" \
             --arg sourceRef "${SOURCE_REF}" \
+            --arg configRef "${CONFIG_REF:-${config_commit}}" \
             --arg target "${REQUEST_TARGET}" \
             --arg sourceCommit "${source_commit}" \
             --arg configCommit "${config_commit}" \
             --arg builtAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --argjson flags "${FLAGS_JSON}" \
-            '{buildId:$buildId,repository:$repository,version:$version,sourceRef:$sourceRef,target:$target,flags:$flags,sourceCommit:$sourceCommit,configCommit:$configCommit,builtAt:$builtAt}' > output/manifest.json
+            '{buildId:$buildId,repository:$repository,version:$version,sourceRef:$sourceRef,configRef:$configRef,target:$target,flags:$flags,sourceCommit:$sourceCommit,configCommit:$configCommit,builtAt:$builtAt}' > output/manifest.json
           sha256sum output/* > output/SHA256SUMS
 
       - name: Upload firmware artifact
