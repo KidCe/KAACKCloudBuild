@@ -29,6 +29,8 @@ test('workflow validates user-controlled flags before make', async () => {
   assert.match(workflow, /picotool_install/);
   assert.match(workflow, /build_command=\(make -j7 "\$\{target\}"/);
   assert.match(workflow, /make uf2 CONFIG/);
+  assert.match(workflow, /src\/platform src\/main/);
+  assert.match(workflow, /src\/config\/configs -mindepth 2/);
   assert.match(workflow, /config_ref/);
   assert.match(workflow, /compatible pinned config ref/);
   assert.match(workflow, /No non-empty HEX firmware artifact found/);
@@ -56,7 +58,9 @@ test('worker keeps GitHub credentials server-side', async () => {
   assert.match(worker, /object\.httpMetadata\?\.contentDisposition/);
   assert.match(worker, /source_ref/);
   assert.match(worker, /src.*platform/);
+  assert.match(worker, /src.*main/);
   assert.match(worker, /src.*config/);
+  assert.match(worker, /configs.*\[\^\/\].*config/);
   assert.match(worker, /gitTree/);
   assert.match(worker, /configRef/);
   assert.match(worker, /\^\[A-Z0-9_-\]\+\$/);
