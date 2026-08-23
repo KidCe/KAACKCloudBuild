@@ -31,7 +31,6 @@
         { "release": "2026.6.1", "label": "Betaflight 2026.6.1", "type": "Stable", "cloudBuild": true, "date": "Official release", "ref": "2026.6.1" },
         { "release": "2025.12.5", "label": "Betaflight 2025.12.5", "type": "Stable", "cloudBuild": true, "date": "Official release", "ref": "2025.12.5" },
         { "release": "4.5.5", "label": "Betaflight 4.5.5", "type": "Stable", "cloudBuild": true, "date": "Official release", "ref": "4.5.5" },
-        { "release": "4.5.4", "label": "Betaflight 4.5.4", "type": "Stable", "cloudBuild": true, "date": "Official release", "ref": "4.5.4" },
         { "release": "4.5.3", "label": "Betaflight 4.5.3", "type": "Stable", "cloudBuild": true, "date": "Official release", "ref": "4.5.3" }
       ],
       "targets": [
