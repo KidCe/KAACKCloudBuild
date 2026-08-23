@@ -1,16 +1,48 @@
 {
   "mode": "demo",
   "source": "Local demo catalog. Configure the Cloudflare Worker for the live Betaflight catalog.",
-  "firmware": [{ "id": "KAACK", "label": "KAACK Community Build", "repository": "configure-in-worker" }],
-  "releases": [
-    { "release": "kaack-4.5.3-v19", "label": "KAACK 4.5.3 / V19", "type": "Community", "cloudBuild": true, "date": "KAACK-4.5.0 · limonspb/betaflight", "ref": "KAACK-4.5.0" },
-    { "release": "kaack-2025.12", "label": "KAACK 2025.12", "type": "Community", "cloudBuild": true, "date": "KAACK-2025.12 · limonspb/betaflight", "ref": "KAACK-2025.12" },
-    { "release": "2026.6.1", "type": "Stable", "cloudBuild": true, "date": "Upstream compatible" },
-    { "release": "2025.12.5", "type": "Stable", "cloudBuild": true, "date": "Upstream compatible" },
-    { "release": "4.5.5", "type": "Stable", "cloudBuild": true, "date": "Upstream compatible" },
-    { "release": "4.5.4", "type": "Stable", "cloudBuild": true, "date": "Upstream compatible" },
-    { "release": "4.5.3", "type": "Stable", "cloudBuild": true, "date": "Upstream compatible" }
+  "firmware": [{ "id": "kaack", "label": "KAACK Community Build", "repository": "configure-in-worker" }, { "id": "betaflight", "label": "Betaflight", "repository": "betaflight/betaflight" }],
+  "firmwareLines": [
+    {
+      "id": "kaack",
+      "label": "KAACK Community",
+      "releases": [
+        { "release": "kaack-4.5.3-v19", "label": "KAACK 4.5.3 / V19", "type": "Community", "cloudBuild": true, "date": "KAACK-4.5.0 · limonspb/betaflight", "ref": "KAACK-4.5.0" },
+        { "release": "kaack-2025.12", "label": "KAACK 2025.12", "type": "Community", "cloudBuild": true, "date": "KAACK-2025.12 · limonspb/betaflight", "ref": "KAACK-2025.12" }
+      ],
+      "targets": [
+        { "target": "KAKUTEH7", "manufacturer": "Holybro", "mcu": "STM32H743", "group": "supported" },
+        { "target": "HDZERO_HALO", "manufacturer": "HDZero", "mcu": "STM32H743", "group": "supported" },
+        { "target": "MAMBAF722_2022A", "manufacturer": "Diatone", "mcu": "STM32F722", "group": "supported" },
+        { "target": "HGLRCF722MINI", "manufacturer": "HGLRC", "mcu": "STM32F722", "group": "supported" },
+        { "target": "SPEEDYBEEF405V3", "manufacturer": "SpeedyBee", "mcu": "STM32F405", "group": "catalogued" },
+        { "target": "MAMBAF722_2022B", "manufacturer": "Diatone", "mcu": "STM32F722", "group": "catalogued" },
+        { "target": "IFLIGHT_BLITZ_F722", "manufacturer": "iFlight", "mcu": "STM32F722", "group": "catalogued" },
+        { "target": "FLYWOOF405S_AIO", "manufacturer": "Flywoo", "mcu": "STM32F405", "group": "catalogued" },
+        { "target": "BETAFPVF411", "manufacturer": "BETAFPV", "mcu": "STM32F411", "group": "catalogued" },
+        { "target": "TMOTORF7", "manufacturer": "T-Motor", "mcu": "STM32F722", "group": "catalogued" },
+        { "target": "ANYFCF7", "manufacturer": "FOSS", "mcu": "STM32F745", "group": "catalogued" }
+      ]
+    },
+    {
+      "id": "betaflight",
+      "label": "Betaflight",
+      "releases": [
+        { "release": "2026.6.1", "label": "Betaflight 2026.6.1", "type": "Stable", "cloudBuild": true, "date": "Official release", "ref": "2026.6.1" },
+        { "release": "2025.12.5", "label": "Betaflight 2025.12.5", "type": "Stable", "cloudBuild": true, "date": "Official release", "ref": "2025.12.5" },
+        { "release": "4.5.5", "label": "Betaflight 4.5.5", "type": "Stable", "cloudBuild": true, "date": "Official release", "ref": "4.5.5" },
+        { "release": "4.5.4", "label": "Betaflight 4.5.4", "type": "Stable", "cloudBuild": true, "date": "Official release", "ref": "4.5.4" },
+        { "release": "4.5.3", "label": "Betaflight 4.5.3", "type": "Stable", "cloudBuild": true, "date": "Official release", "ref": "4.5.3" }
+      ],
+      "targets": [
+        { "target": "KAKUTEH7", "manufacturer": "Holybro", "mcu": "STM32H743", "group": "catalogued" },
+        { "target": "HDZERO_HALO", "manufacturer": "HDZero", "mcu": "STM32H743", "group": "catalogued" },
+        { "target": "MAMBAF722_2022A", "manufacturer": "Diatone", "mcu": "STM32F722", "group": "catalogued" },
+        { "target": "HGLRCF722MINI", "manufacturer": "HGLRC", "mcu": "STM32F722", "group": "catalogued" }
+      ]
+    }
   ],
+  "releases": [],
   "targets": [
     { "target": "KAKUTEH7", "manufacturer": "Holybro", "mcu": "STM32H743", "group": "supported" },
     { "target": "HDZERO_HALO", "manufacturer": "HDZero", "mcu": "STM32H743", "group": "supported" },

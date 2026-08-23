@@ -8,6 +8,11 @@ on:
         description: "Deterministic request id"
         required: true
         type: string
+      firmware_line:
+        description: "Approved firmware line: kaack or betaflight"
+        required: false
+        default: "kaack"
+        type: string
       version:
         description: "Display release identifier"
         required: true
@@ -52,7 +57,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      FIRMWARE_REPOSITORY: ${{ vars.FIRMWARE_REPOSITORY || 'limonspb/betaflight' }}
+      FIRMWARE_LINE: ${{ inputs.firmware_line || 'kaack' }}
+      FIRMWARE_REPOSITORY: ""
       VERSION: ${{ inputs.version }}
       SOURCE_REF: ${{ inputs.source_ref }}
       CONFIG_REF: ${{ inputs.config_ref }}
@@ -65,23 +71,41 @@ jobs:
       - name: Require the approved firmware source
         shell: bash
         run: |
+          case "${FIRMWARE_LINE}" in
+            kaack)
+              FIRMWARE_REPOSITORY="limonspb/betaflight"
+              ;;
+            betaflight)
+              FIRMWARE_REPOSITORY="betaflight/betaflight"
+              ;;
+            *)
+              echo "Unsupported firmware line: ${FIRMWARE_LINE}"
+              exit 1
+              ;;
+          esac
+          echo "FIRMWARE_REPOSITORY=${FIRMWARE_REPOSITORY}" >> "${GITHUB_ENV}"
           test -n "${FIRMWARE_REPOSITORY}" || { echo "Set the repository Actions variable FIRMWARE_REPOSITORY to the approved KAACK fork before building."; exit 1; }
-          test "${FIRMWARE_REPOSITORY}" = "limonspb/betaflight" || { echo "Only limonspb/betaflight is approved for KAACK builds."; exit 1; }
           test -n "${SOURCE_REF}" || { echo "The builder must provide an approved source ref."; exit 1; }
           [[ "${SOURCE_REF}" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "Invalid source ref"; exit 1; }
           [[ -z "${CONFIG_REF}" || "${CONFIG_REF}" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "Invalid config ref"; exit 1; }
           [[ -z "${BUILD_KEY}" || "${BUILD_KEY}" =~ ^[A-Za-z0-9-]+$ ]] || { echo "Invalid build key"; exit 1; }
           [[ -z "${RELEASE_NAME}" || "${RELEASE_NAME}" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "Invalid release name"; exit 1; }
-          case "${SOURCE_REF}" in
-            KAACK-4.5.0) test "${CONFIG_REF}" = "9a9f899aab4c4ffaa74f973a643447b48453ff54" || { echo "KAACK-4.5.0 requires its compatible pinned config ref."; exit 1; } ;;
-            KAACK-2025.12) test -z "${CONFIG_REF}" || { echo "KAACK-2025.12 must use its checked-out config submodule."; exit 1; } ;;
-            *) echo "Source ref is not an approved KAACK branch: ${SOURCE_REF}"; exit 1 ;;
-          esac
+          if [[ "${FIRMWARE_LINE}" = "kaack" ]]; then
+            test "${FIRMWARE_REPOSITORY}" = "limonspb/betaflight" || { echo "Only limonspb/betaflight is approved for KAACK builds."; exit 1; }
+            case "${SOURCE_REF}" in
+              KAACK-4.5.0) test "${CONFIG_REF}" = "9a9f899aab4c4ffaa74f973a643447b48453ff54" || { echo "KAACK-4.5.0 requires its compatible pinned config ref."; exit 1; } ;;
+              KAACK-2025.12) test -z "${CONFIG_REF}" || { echo "KAACK-2025.12 must use its checked-out config submodule."; exit 1; } ;;
+              *) echo "Source ref is not an approved KAACK branch: ${SOURCE_REF}"; exit 1 ;;
+            esac
+          else
+            test "${FIRMWARE_REPOSITORY}" = "betaflight/betaflight" || { echo "Only betaflight/betaflight is approved for Betaflight builds."; exit 1; }
+            [[ "${SOURCE_REF}" =~ ^(master|[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9._-]+)?)$ ]] || { echo "Source ref is not an approved Betaflight release ref: ${SOURCE_REF}"; exit 1; }
+          fi
 
       - name: Checkout firmware source
         uses: actions/checkout@v5
         with:
-          repository: ${{ env.FIRMWARE_REPOSITORY }}
+          repository: ${{ inputs.firmware_line == 'betaflight' && 'betaflight/betaflight' || 'limonspb/betaflight' }}
           ref: ${{ env.SOURCE_REF }}
           path: firmware
           fetch-depth: 1
@@ -190,7 +214,7 @@ jobs:
           for flag in "${flags[@]}"; do flag_tokens+=("$(flag_slug "${flag}")"); done
           flags_slug="$(IFS=_; printf '%s' "${flag_tokens[*]}")"
           [[ -n "${flags_slug}" ]] || flags_slug="NOFLAGS"
-          firmware_stem="$(slug "${REQUEST_TARGET}")_KAACK_$(slug "${VERSION}")_${flags_slug}"
+          firmware_stem="$(slug "${REQUEST_TARGET}")_$(slug "${FIRMWARE_LINE}")_$(slug "${VERSION}")_${flags_slug}"
           hex_source="$(find firmware/obj -maxdepth 1 -type f -name '*.hex' -size +0c -print -quit)"
           test -n "${hex_source}" || { echo "No non-empty HEX firmware artifact found"; exit 1; }
           hex_filename="${firmware_stem}.hex"

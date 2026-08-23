@@ -2,8 +2,9 @@ const config = window.KAACK_CONFIG || {};
 const apiBase = (config.apiBase || "").replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const GENERAL_OPTIONS_KEY = "kaack-cloud-builder.general-options";
+const DEFAULT_FIRMWARE_LINE = "kaack";
 const DEFAULT_KAACK_RELEASE = "kaack-4.5.3-v19";
-const state = { catalog: null, options: null, releases: [], live: false, selected: new Set(), build: null };
+const state = { catalog: null, options: null, releases: [], targets: [], firmwareLine: DEFAULT_FIRMWARE_LINE, live: false, selected: new Set(), build: null };
 
 const fallback = async () => (await fetch("data/catalog.json")).json();
 const api = async (path, init) => { const response = await fetch(`${apiBase}${path}`, init); if (!response.ok) throw new Error(`API ${response.status}`); return response.json(); };
@@ -16,14 +17,41 @@ async function loadCatalog() {
   await loadOptions($('version').value);
 }
 
+function firmwareLines() {
+  if (Array.isArray(state.catalog?.firmwareLines)) return state.catalog.firmwareLines;
+  return (state.catalog?.firmware || []).map((line) => ({
+    id: String(line.id || "kaack").toLowerCase(),
+    label: line.label || line.id,
+    releases: state.catalog?.releases || [],
+    targets: state.catalog?.targets || []
+  }));
+}
+function selectedLine() { return firmwareLines().find((line) => line.id === state.firmwareLine) || firmwareLines()[0]; }
+
 function renderCatalog() {
   const catalog = state.catalog;
-  state.releases = catalog.releases || [];
-  $('firmware').innerHTML = catalog.firmware.map((x) => `<option value="${escapeHtml(x.id)}">${escapeHtml(x.label)}</option>`).join("");
-  $('target').innerHTML = catalog.targets.map((x) => `<option value="${escapeHtml(x.target)}">${escapeHtml(x.target)} · ${escapeHtml(x.manufacturer || "Unknown")}</option>`).join("");
-  $('target').value = catalog.targets.find((x) => x.target === "KAKUTEH7")?.target || catalog.targets[0]?.target;
+  const lines = firmwareLines();
+  state.firmwareLine = lines.find((line) => line.id === DEFAULT_FIRMWARE_LINE)?.id || lines[0]?.id || DEFAULT_FIRMWARE_LINE;
+  $('firmware').innerHTML = lines.map((x) => `<option value="${escapeHtml(x.id)}">${escapeHtml(x.label)}</option>`).join("");
+  $('firmware').value = state.firmwareLine;
+  renderLine();
+  $('firmware').addEventListener('change', async () => {
+    state.firmwareLine = $('firmware').value;
+    renderLine();
+    if (state.live && $('target').value) await loadTargetReleases($('target').value);
+    await loadOptions($('version').value);
+    updateRecipe();
+  });
+}
+
+function renderLine() {
+  const line = selectedLine();
+  state.targets = line?.targets || [];
+  $('target').innerHTML = state.targets.map((x) => `<option value="${escapeHtml(x.target)}">${escapeHtml(x.target)} · ${escapeHtml(x.manufacturer || "Unknown")}</option>`).join("");
+  const preferredTarget = state.targets.find((x) => x.target === "HDZERO_HALO") || state.targets.find((x) => x.target === "KAKUTEH7") || state.targets[0];
+  $('target').value = preferredTarget?.target || "";
   renderTarget();
-  renderReleases(catalog.releases || []);
+  renderReleases(line?.releases || []);
   $('connectionBadge').className = `status-pill ${state.live ? "live" : "demo"}`;
   $('connectionBadge').innerHTML = `<i></i> ${state.live ? "Live catalog" : "Demo mode"}`;
 }
@@ -44,8 +72,8 @@ async function loadOptions(release) {
   renderOptions();
 }
 async function loadTargetReleases(target) {
-  try { const detail = await api(`/api/targets/${encodeURIComponent(target)}`); renderReleases(detail.releases || []); }
-  catch { renderReleases(state.catalog.releases || []); }
+  try { const detail = await api(`/api/targets/${encodeURIComponent(target)}?firmware=${encodeURIComponent(state.firmwareLine)}`); renderReleases(detail.releases || []); }
+  catch { renderReleases(selectedLine()?.releases || []); }
 }
 
 function renderOptions() {
@@ -75,10 +103,28 @@ function readGeneralOptions() { try { const saved = JSON.parse(localStorage.getI
 function persistGeneralOptions() { try { localStorage.setItem(GENERAL_OPTIONS_KEY, JSON.stringify([...document.querySelectorAll('[data-flag]:checked')].map((x) => x.dataset.flag))); } catch {} }
 
 function renderTarget() {
-  const target = state.catalog?.targets.find((x) => x.target === $('target').value);
+  const target = state.targets.find((x) => x.target === $('target').value);
   $('targetMeta').innerHTML = target ? `<span>${escapeHtml(target.manufacturer || "Unknown manufacturer")} · ${escapeHtml(target.mcu || "MCU unknown")}</span><span class="supported">${target.group === "supported" ? "● Supported" : "● Catalogued"}</span>` : "";
 }
-function renderReleaseMeta() { const r = state.releases.find((x) => x.release === $('version').value); $('releaseMeta').textContent = r ? `${r.type || "Release"} · ${r.date || "Catalogued"} · cloud build ${r.cloudBuild === false ? "unavailable" : "available"}` : ""; }
+function renderReleaseMeta() {
+  const r = state.releases.find((x) => x.release === $('version').value);
+  const line = selectedLine();
+  $('releaseMeta').textContent = r ? `${line?.label || "Firmware"} · ${r.type || "Release"} · ${r.date || "Catalogued"} · cloud build ${r.cloudBuild === false ? "unavailable" : "available"}` : "";
+  const disclaimer = $('versionDisclaimerText');
+  if (!disclaimer) return;
+  const isCommunity = r?.type === "Community" || r?.release?.toLowerCase().startsWith("kaack-");
+  if (isCommunity) {
+    const label = r.label || r.release;
+    const officialVersion = r.release.replace(/^kaack-/, "").replace(/-v\d+$/i, "");
+    if (officialVersion === "4.5.3") {
+      disclaimer.textContent = `${label} is not the same as Betaflight 4.5.3. It is a separate firmware based on an older Betaflight 4.5 line, with its own extra features. The 4.5.3 number in the KAACK name does not mean that all fixes from official Betaflight 4.5.3 are included. If you need all official 4.5.3 fixes, use official Betaflight 4.5.3.`;
+    } else {
+      disclaimer.textContent = `${label} is not the same as official Betaflight ${officialVersion}. It is a separate KAACK firmware with its own version number and extra features. The name does not mean that all fixes from official Betaflight ${officialVersion} are included. If you need official fixes, use official Betaflight ${officialVersion}.`;
+    }
+  } else {
+    disclaimer.textContent = "This is an official Betaflight release. It is separate from the KAACK community builds; switch Firmware line to KAACK Community for KAK versions.";
+  }
+}
 
 function getFlags() {
   const values = [];

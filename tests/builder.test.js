@@ -12,7 +12,11 @@ test('demo catalog contains the builder surface', async () => {
   assert.ok(catalog.targets.some((target) => target.target === 'HDZERO_HALO'));
   assert.ok(catalog.targets.some((target) => target.target === 'MAMBAF722_2022A'));
   assert.ok(catalog.targets.some((target) => target.target === 'HGLRCF722MINI'));
-  assert.ok(catalog.releases.some((release) => release.label === 'KAACK 4.5.3 / V19' && release.ref === 'KAACK-4.5.0'));
+  const kaackLine = catalog.firmwareLines.find((line) => line.id === 'kaack');
+  const betaflightLine = catalog.firmwareLines.find((line) => line.id === 'betaflight');
+  assert.ok(kaackLine.releases.some((release) => release.label === 'KAACK 4.5.3 / V19' && release.ref === 'KAACK-4.5.0'));
+  assert.ok(betaflightLine.releases.some((release) => release.label === 'Betaflight 4.5.3' && release.ref === '4.5.3'));
+  assert.ok(betaflightLine.targets.length < 10);
   assert.ok(catalog.options.osdProtocols.some((option) => option.value.includes('USE_OSD_HD')));
 });
 
@@ -34,7 +38,10 @@ test('workflow validates user-controlled flags before make', async () => {
   assert.match(workflow, /FIRMWARE_REPOSITORY/);
   assert.match(workflow, /approved KAACK fork/);
   assert.match(workflow, /firmware_stem=/);
-  assert.match(workflow, /firmware_stem="\$\(slug "\$\{REQUEST_TARGET\}"\)_KAACK_/);
+  assert.match(workflow, /firmware_stem="\$\(slug "\$\{REQUEST_TARGET\}"\)_\$\(slug "\$\{FIRMWARE_LINE\}"\)_/);
+  assert.match(workflow, /firmware_line/);
+  assert.match(workflow, /betaflight\/betaflight/);
+  assert.match(workflow, /limonspb\/betaflight/);
   assert.match(workflow, /DIGIOSD/);
   assert.match(workflow, /content-disposition/);
   assert.match(workflow, /firmwareFileName/);
@@ -63,6 +70,8 @@ test('builder remembers general options and applies racing defaults', async () =
   assert.match(app, /USE_TELEMETRY_CRSF/);
   assert.match(app, /USE_DSHOT/);
   assert.match(app, /USE_OSD_HD/);
+  assert.match(app, /firmwareLines/);
+  assert.match(app, /firmware=\$\{encodeURIComponent\(state\.firmwareLine\)\}/);
   assert.match(app, /not the same as Betaflight 4\.5\.3/);
   assert.match(app, /older Betaflight 4\.5 line/);
   assert.match(app, /all fixes from official Betaflight 4\.5\.3/);

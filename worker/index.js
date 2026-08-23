@@ -7,8 +7,9 @@ const JSON_HEADERS = {
 
 const upstream = (env) => (env.UPSTREAM_BUILD_API || "https://build.betaflight.com").replace(/\/$/, "");
 const sourceRepository = (env) => String(env.FIRMWARE_REPOSITORY || "").trim();
+const officialRepository = (env) => String(env.BETAFLIGHT_REPOSITORY || "betaflight/betaflight").trim();
 const configRepository = (env) => String(env.FIRMWARE_CONFIG_REPOSITORY || "betaflight/config").trim();
-const hasBuilder = (env) => Boolean(env.GITHUB_TOKEN && env.GITHUB_REPOSITORY && sourceRepository(env));
+const hasBuilder = (env) => Boolean(env.GITHUB_TOKEN && env.GITHUB_REPOSITORY && sourceRepository(env) && officialRepository(env));
 const json = (body, status = 200, extra = {}) => new Response(JSON.stringify(body), { status, headers: { ...JSON_HEADERS, ...extra } });
 const validToken = (value) => typeof value === "string" && /^[A-Z][A-Z0-9_]*$/.test(value) && (value.startsWith("USE_") || value === "CLOUD_BUILD");
 
@@ -68,6 +69,15 @@ const sourceRefFor = (env, recipe) => {
   if (!/^[A-Za-z0-9._\/-]+$/.test(entry.ref)) throw new Error("Invalid configured source ref");
   return entry.ref;
 };
+const officialRefFor = async (env, recipe) => {
+  const response = await fetch(`${upstream(env)}/api/releases`);
+  if (!response.ok) throw new Error("Official Betaflight release catalog unavailable");
+  const release = (await response.json()).find((item) => item.release === recipe.version && (!item.repository || item.repository === officialRepository(env)) && item.cloudBuild !== false && !item.withdrawn);
+  const ref = release?.branch || release?.tag || release?.commit;
+  if (!ref || !/^[A-Za-z0-9._\/-]+$/.test(ref)) throw new Error("The selected Betaflight release has no safe source ref");
+  if (recipe.sourceRef && recipe.sourceRef !== ref) throw new Error("The source ref does not match the selected Betaflight release");
+  return ref;
+};
 
 const normalize = (input) => {
   if (!input || typeof input !== "object") throw new Error("Invalid build request");
@@ -76,7 +86,9 @@ const normalize = (input) => {
   const target = String(input.target || "");
   const flags = [...new Set((Array.isArray(input.flags) ? input.flags : []).flatMap((x) => String(x).split(/\s+/)).filter(Boolean))].sort();
   if (!/^[A-Za-z0-9._-]+$/.test(version) || (sourceRef && !/^[A-Za-z0-9._\/-]+$/.test(sourceRef)) || !/^[A-Z0-9_-]+$/.test(target) || !flags.every(validToken)) throw new Error("Invalid version, source ref, target or build flag");
-  return { firmware: String(input.firmware || "KAACK"), version, sourceRef, target, flags, builderVersion: String(input.builderVersion || "0.2.0") };
+  const firmware = String(input.firmware || "kaack").toLowerCase();
+  if (!/^(kaack|betaflight)$/.test(firmware)) throw new Error("Invalid firmware line");
+  return { firmware, version, sourceRef, target, flags, builderVersion: String(input.builderVersion || "0.2.0") };
 };
 const cacheKey = async (recipe) => { const bytes = new TextEncoder().encode(JSON.stringify(recipe)); const hash = await crypto.subtle.digest("SHA-256", bytes); return [...new Uint8Array(hash)].map((x) => x.toString(16).padStart(2, "0")).join(""); };
 
@@ -116,6 +128,22 @@ const sourceTargetIndex = async (env, ref, configuredConfigRef = "") => {
 };
 const sourceTargets = async (env, ref, configRef) => sourceTargetIndex(env, ref, configRef);
 const sourceTargetExists = async (env, target, ref, configRef) => (await sourceTargetIndex(env, ref, configRef)).some((item) => item.target === target);
+const officialReleases = async (env) => {
+  const response = await fetch(`${upstream(env)}/api/releases`);
+  if (!response.ok) throw new Error("Official Betaflight release catalog unavailable");
+  return (await response.json())
+    .filter((item) => (!item.repository || item.repository === officialRepository(env)) && item.cloudBuild !== false && !item.withdrawn && (item.branch || item.tag || item.commit))
+    .map((item) => ({ ...item, label: `Betaflight ${item.release}`, ref: item.branch || item.tag || item.commit, cloudBuild: true }));
+};
+const officialTargets = async (env) => {
+  const response = await fetch(`${upstream(env)}/api/targets`);
+  if (!response.ok) throw new Error("Official Betaflight target catalog unavailable");
+  return (await response.json()).map((item) => ({ ...item, group: "catalogued" }));
+};
+const enrichTargets = (targets, referenceTargets) => {
+  const metadata = new Map(referenceTargets.map((item) => [item.target, item]));
+  return targets.map((item) => ({ ...metadata.get(item.target), ...item })).sort((a, b) => a.target.localeCompare(b.target));
+};
 const sourceCatalog = async (env) => {
   const releases = sourceRefs(env);
   if (!releases.length) throw new Error("Configure FIRMWARE_SOURCE_REFS for the selected firmware repository");
@@ -123,7 +151,7 @@ const sourceCatalog = async (env) => {
   if (!refs.length) throw new Error("CATALOG_SOURCE_REF is not one of the configured source refs");
   const targetLists = await Promise.all(refs.map((x) => sourceTargets(env, x.ref, x.configRef)));
   const targets = [...new Map(targetLists.flat().map((x) => [x.target, x])).values()].sort((a, b) => a.target.localeCompare(b.target));
-  return { mode: "live", source: `github:${sourceRepository(env)}`, firmware: [{ id: "KAACK", label: "KAACK Community" }], releases: releases.map((x) => ({ ...x, cloudBuild: true })), targets, options: DEFAULT_OPTIONS };
+  return { mode: "live", source: `github:${sourceRepository(env)}`, firmware: [{ id: "kaack", label: "KAACK Community" }, { id: "betaflight", label: "Betaflight" }], releases: releases.map((x) => ({ ...x, cloudBuild: true })), targets, options: DEFAULT_OPTIONS };
 };
 const validateAgainstSource = async (env, recipe) => {
   const ref = sourceRefFor(env, recipe);
@@ -132,27 +160,36 @@ const validateAgainstSource = async (env, recipe) => {
   return { sourceRef: ref };
 };
 const validateAgainstCatalog = async (env, recipe) => {
-  if (sourceRepository(env)) return validateAgainstSource(env, recipe);
+  if (recipe.firmware === "kaack") return validateAgainstSource(env, recipe);
   const targetResponse = await fetch(`${upstream(env)}/api/targets/${encodeURIComponent(recipe.target)}`);
   if (!targetResponse.ok) throw new Error("Target is not present in the upstream catalog");
   const detail = await targetResponse.json();
   const release = (detail.releases || []).find((item) => item.release === recipe.version && item.cloudBuild !== false && !item.withdrawn);
   if (!release) throw new Error("Release is not available for this target");
-  return detail;
+  return { sourceRef: await officialRefFor(env, recipe) };
 };
 
 async function catalog(env) {
-  if (sourceRepository(env)) return sourceCatalog(env);
+  if (sourceRepository(env)) {
+    const [community, targets, releases] = await Promise.all([sourceCatalog(env), officialTargets(env), officialReleases(env)]);
+    const communityTargets = enrichTargets(community.targets, targets);
+    const verifiedTargets = new Set(["HDZERO_HALO", "MAMBAF722_2022A", "MAMBAF722_2022B", "HGLRCF722MINI"]);
+    const communityLine = { id: "kaack", label: "KAACK Community", repository: sourceRepository(env), releases: community.releases, targets: communityTargets.map((item) => verifiedTargets.has(item.target) ? { ...item, group: "supported" } : item) };
+    const officialLine = { id: "betaflight", label: "Betaflight", repository: officialRepository(env), releases, targets };
+    return { mode: "live", source: { betaflight: `github:${officialRepository(env)}`, kaack: `github:${sourceRepository(env)}` }, firmware: [{ id: "kaack", label: "KAACK Community" }, { id: "betaflight", label: "Betaflight" }], firmwareLines: [communityLine, officialLine], releases: community.releases, targets: communityLine.targets, options: DEFAULT_OPTIONS };
+  }
   const response = await fetch(`${upstream(env)}/api/targets`);
   if (!response.ok) throw new Error("Upstream target catalog unavailable");
   const targets = await response.json();
   const probe = await fetch(`${upstream(env)}/api/targets/${encodeURIComponent(env.CATALOG_PROBE_TARGET || "KAKUTEH7")}`);
   const detail = probe.ok ? await probe.json() : { releases: [] };
   const options = await fetch(`${upstream(env)}/api/options/${encodeURIComponent((detail.releases || []).find((x) => x.cloudBuild !== false)?.release || "4.5.5")}`);
-  return { mode: "live", source: upstream(env), firmware: [{ id: "KAACK", label: "KAACK Community" }], targets, releases: detail.releases || [], options: options.ok ? await options.json() : DEFAULT_OPTIONS };
+  const releases = await officialReleases(env);
+  const line = { id: "betaflight", label: "Betaflight", repository: officialRepository(env), releases, targets: targets.map((item) => ({ ...item, group: "catalogued" })) };
+  return { mode: "live", source: upstream(env), firmware: [{ id: "betaflight", label: "Betaflight" }], firmwareLines: [line], targets: line.targets, releases, options: options.ok ? await options.json() : DEFAULT_OPTIONS };
 }
-async function targetCatalog(env, target) {
-  if (sourceRepository(env)) {
+async function targetCatalog(env, target, firmware) {
+  if (sourceRepository(env) && firmware !== "betaflight") {
     const releases = (await Promise.all(sourceRefs(env).map(async (entry) => (await sourceTargetExists(env, target, entry.ref, entry.configRef)) ? { ...entry, cloudBuild: true } : null))).filter(Boolean);
     return { target, releases };
   }
@@ -160,10 +197,10 @@ async function targetCatalog(env, target) {
   return response.json();
 }
 async function dispatch(env, recipe, id) {
-  const sourceRef = sourceRepository(env) ? sourceRefFor(env, recipe) : recipe.sourceRef || recipe.version;
-  const sourceEntry = sourceRefs(env).find((entry) => entry.release === recipe.version);
+  const sourceRef = recipe.firmware === "kaack" ? sourceRefFor(env, recipe) : await officialRefFor(env, recipe);
+  const sourceEntry = recipe.firmware === "kaack" ? sourceRefs(env).find((entry) => entry.release === recipe.version) : null;
   const path = `/repos/${env.GITHUB_REPOSITORY}/actions/workflows/build-firmware.yml/dispatches`;
-  await gh(env, path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ref: env.GITHUB_REF || "main", inputs: { build_id: id, version: recipe.version, source_ref: sourceRef, config_ref: sourceEntry?.configRef || "", target: recipe.target, flags_json: JSON.stringify(recipe.flags) } }) });
+  await gh(env, path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ref: env.GITHUB_REF || "main", inputs: { build_id: id, firmware_line: recipe.firmware, version: recipe.version, source_ref: sourceRef, config_ref: sourceEntry?.configRef || "", target: recipe.target, flags_json: JSON.stringify(recipe.flags) } }) });
   return { id, mode: "github-actions", status: "queued", cacheKey: await cacheKey({ ...recipe, sourceRef }), message: "Workflow dispatched. Polling GitHub Actions for the build result." };
 }
 async function locateRun(env, id) { const data = await gh(env, `/repos/${env.GITHUB_REPOSITORY}/actions/runs?event=workflow_dispatch&per_page=30`); return data.workflow_runs?.find((run) => run.display_title === `KAACK build ${id}` || run.name === `KAACK build ${id}`); }
@@ -210,7 +247,9 @@ export default { async fetch(request, env) {
     if (url.pathname.startsWith("/api/targets/") && request.method === "GET") {
       const target = url.pathname.split("/").pop();
       if (!/^[A-Z0-9_-]+$/.test(target)) return json({ error: "Invalid target" }, 400);
-      return json(await targetCatalog(env, target), 200, { "cache-control": "public, max-age=300" });
+      const firmware = (url.searchParams.get("firmware") || "kaack").toLowerCase();
+      if (!/^(kaack|betaflight)$/.test(firmware)) return json({ error: "Invalid firmware line" }, 400);
+      return json(await targetCatalog(env, target, firmware), 200, { "cache-control": "public, max-age=300" });
     }
     if (url.pathname === "/api/builds" && request.method === "POST") {
       const recipe = normalize(await request.json());

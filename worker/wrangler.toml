@@ -5,6 +5,7 @@ workers_dev = true
 
 [vars]
 FIRMWARE_REPOSITORY = "limonspb/betaflight"
+BETAFLIGHT_REPOSITORY = "betaflight/betaflight"
 FIRMWARE_CONFIG_REPOSITORY = "betaflight/config"
 FIRMWARE_SOURCE_REFS = '[{"release":"kaack-4.5.3-v19","label":"KAACK 4.5.3 / V19","type":"Community","ref":"KAACK-4.5.0","configRef":"9a9f899aab4c4ffaa74f973a643447b48453ff54"},{"release":"kaack-2025.12","label":"KAACK 2025.12","type":"Community","ref":"KAACK-2025.12"}]'
 GITHUB_REPOSITORY = "KidCe/KAACKCloudBuild"

@@ -2,13 +2,13 @@
 
 An unofficial, independent web-based cloud builder MVP for KAACK / alternative Betaflight firmware builds.
 
-The UI intentionally stays close to the Betaflight Configurator firmware-flasher flow: choose firmware line, version and target, keep the common CRSF / Crossfire / DShot / Digital OSD defaults, optionally expand General Options, then build and download.
+The UI intentionally stays close to the Betaflight Configurator firmware-flasher flow: choose a firmware line, then choose a version and target from that line, keep the common CRSF / Crossfire / DShot / Digital OSD defaults, optionally expand General Options, then build and download. The live catalog keeps official Betaflight and KAACK Community releases and targets separate.
 
 This first vertical slice is intentionally quick to run:
 
 - `index.html` + `app.js` provide the Cloud Build-style UI in English.
 - `data/catalog.json` makes local UX testing work without an account or secret.
-- `worker/index.js` exposes either the upstream catalog or a source-backed KAACK catalog and dispatches validated builds to GitHub Actions.
+- `worker/index.js` exposes separate Betaflight and KAACK Community catalogs and dispatches validated builds to GitHub Actions.
 - `.github/workflows/build-firmware.yml` checks out an approved source tag/branch, builds the selected target and uploads firmware plus a provenance manifest.
 - `.github/workflows/deploy-pages.yml` deploys the static UI to GitHub Pages.
 
@@ -41,6 +41,7 @@ Deploy `worker/` to Cloudflare Workers locally with `cd worker; npx wrangler dep
 - `GITHUB_REPOSITORY` as a Worker variable naming the builder repository, such as `OWNER/REPOSITORY`.
 - `GITHUB_REF` as the workflow-dispatch branch, normally `main`.
 - `FIRMWARE_REPOSITORY` as `limonspb/betaflight`, the public KAACK source fork maintained by Ivan Efimov (Limon).
+- `BETAFLIGHT_REPOSITORY` as `betaflight/betaflight`, the official source used when the Betaflight firmware line is selected.
 - `FIRMWARE_CONFIG_REPOSITORY` as `betaflight/config` for the unified flight-controller configuration targets.
 - `FIRMWARE_SOURCE_REFS` as a JSON array mapping the UI release ids to the real source branches. The racing line is displayed as `KAACK 4.5.3 / V19` but uses the technical branch `KAACK-4.5.0` plus its compatible pinned config commit; the newer line uses `KAACK-2025.12` and its checked-out config submodule.
 - Optional `CATALOG_SOURCE_REF` to choose which source ref supplies the live target list.
