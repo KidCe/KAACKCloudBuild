@@ -161,8 +161,10 @@ jobs:
           fi
           config_path="$(find src/config/configs -mindepth 3 -maxdepth 3 -type f -path "*/${target}/config.h" -print -quit 2>/dev/null || true)"
           if [[ -n "${config_path}" ]]; then
-            build_command=(make -j7 "${target}" EXTRA_FLAGS="${extra_flags}")
-            uf2_command=(make uf2 CONFIG="${target}" EXTRA_FLAGS="${extra_flags}")
+            config_mcu="$(sed -nE 's/^#define[[:space:]]+FC_TARGET_MCU[[:space:]]+([A-Z0-9_]+).*$/\1/p' "${config_path}" | head -n 1)"
+            test -n "${config_mcu}" || { echo "Config ${target} does not declare FC_TARGET_MCU"; exit 1; }
+            build_command=(make -j7 "${config_mcu}" CONFIG="${target}" EXTRA_FLAGS="${extra_flags}")
+            uf2_command=(make uf2 TARGET="${config_mcu}" CONFIG="${target}" EXTRA_FLAGS="${extra_flags}")
           elif find src/platform src/main -path "*/target/${target}/target.mk" -print -quit 2>/dev/null | grep -q .; then
             build_command=(make -j7 "${target}" EXTRA_FLAGS="${extra_flags}")
             uf2_command=(make uf2 TARGET="${target}" EXTRA_FLAGS="${extra_flags}")
