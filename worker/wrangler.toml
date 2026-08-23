@@ -1,6 +1,7 @@
 name = "kaack-cloud-builder-api"
 main = "index.js"
 compatibility_date = "2026-08-23"
+workers_dev = true
 
 [vars]
 FIRMWARE_REPOSITORY = "limonspb/betaflight"
