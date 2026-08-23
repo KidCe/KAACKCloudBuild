@@ -114,7 +114,7 @@ jobs:
           done
           if [[ -n "${CONFIG_REF}" ]]; then
             rm -rf src/config
-            git clone --depth 1 https://github.com/betaflight/config src/config
+            git clone https://github.com/betaflight/config src/config
             git -C src/config checkout --detach "${CONFIG_REF}"
           else
             make configs
