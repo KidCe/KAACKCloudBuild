@@ -78,6 +78,7 @@ const officialRefFor = async (env, recipe) => {
   if (recipe.sourceRef && recipe.sourceRef !== ref) throw new Error("The source ref does not match the selected Betaflight release");
   return ref;
 };
+const officialConfigRefFor = (version) => /^(4\.|2025\.)/.test(version) ? "18ffb2a74d388ccd6add5aff12b5b1398e0afd0a" : "";
 
 const normalize = (input) => {
   if (!input || typeof input !== "object") throw new Error("Invalid build request");
@@ -206,7 +207,8 @@ async function dispatch(env, recipe, id) {
   const sourceRef = recipe.firmware === "kaack" ? sourceRefFor(env, recipe) : await officialRefFor(env, recipe);
   const sourceEntry = recipe.firmware === "kaack" ? sourceRefs(env).find((entry) => entry.release === recipe.version) : null;
   const path = `/repos/${env.GITHUB_REPOSITORY}/actions/workflows/build-firmware.yml/dispatches`;
-  await gh(env, path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ref: env.GITHUB_REF || "main", inputs: { build_id: id, firmware_line: recipe.firmware, version: recipe.version, source_ref: sourceRef, config_ref: sourceEntry?.configRef || "", target: recipe.target, flags_json: JSON.stringify(recipe.flags) } }) });
+  const configRef = sourceEntry?.configRef || (recipe.firmware === "betaflight" ? officialConfigRefFor(recipe.version) : "");
+  await gh(env, path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ref: env.GITHUB_REF || "main", inputs: { build_id: id, firmware_line: recipe.firmware, version: recipe.version, source_ref: sourceRef, config_ref: configRef, target: recipe.target, flags_json: JSON.stringify(recipe.flags) } }) });
   return { id, mode: "github-actions", status: "queued", cacheKey: await cacheKey({ ...recipe, sourceRef }), message: "Workflow dispatched. Polling GitHub Actions for the build result." };
 }
 async function locateRun(env, id) { const data = await gh(env, `/repos/${env.GITHUB_REPOSITORY}/actions/runs?event=workflow_dispatch&per_page=30`); return data.workflow_runs?.find((run) => run.display_title === `KAACK build ${id}` || run.name === `KAACK build ${id}`); }

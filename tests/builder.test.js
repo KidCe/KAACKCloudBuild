@@ -65,6 +65,7 @@ test('worker keeps GitHub credentials server-side', async () => {
   assert.match(worker, /configs.*\[\^\/\].*config/);
   assert.match(worker, /gitTree/);
   assert.match(worker, /configRef/);
+  assert.match(worker, /officialConfigRefFor/);
   assert.match(worker, /\^\[A-Z0-9_-\]\+\$/);
   assert.doesNotMatch(await readFile(new URL('../app.js', import.meta.url), 'utf8'), /GITHUB_TOKEN/);
 });
