@@ -159,7 +159,7 @@ jobs:
           else
             make configs
           fi
-          config_path="$(find src/config/configs -mindepth 2 -maxdepth 2 -type f -path "*/${target}/config.h" -print -quit 2>/dev/null || true)"
+          config_path="$(find src/config/configs -mindepth 3 -maxdepth 3 -type f -path "*/${target}/config.h" -print -quit 2>/dev/null || true)"
           if [[ -n "${config_path}" ]]; then
             build_command=(make -j7 "${target}" EXTRA_FLAGS="${extra_flags}")
             uf2_command=(make uf2 CONFIG="${target}" EXTRA_FLAGS="${extra_flags}")

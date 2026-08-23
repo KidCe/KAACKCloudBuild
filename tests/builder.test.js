@@ -30,7 +30,7 @@ test('workflow validates user-controlled flags before make', async () => {
   assert.match(workflow, /build_command=\(make -j7 "\$\{target\}"/);
   assert.match(workflow, /make uf2 CONFIG/);
   assert.match(workflow, /src\/platform src\/main/);
-  assert.match(workflow, /src\/config\/configs -mindepth 2/);
+  assert.match(workflow, /src\/config\/configs -mindepth 3/);
   assert.match(workflow, /config_ref/);
   assert.match(workflow, /compatible pinned config ref/);
   assert.match(workflow, /No non-empty HEX firmware artifact found/);
