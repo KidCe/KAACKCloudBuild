@@ -194,7 +194,13 @@ async function targetCatalog(env, target, firmware) {
     return { target, releases };
   }
   const response = await fetch(`${upstream(env)}/api/targets/${encodeURIComponent(target)}`);
-  return response.json();
+  const detail = await response.json();
+  if (firmware !== "betaflight") return detail;
+  const releases = await officialReleases(env);
+  const officialByRelease = new Map(releases.map((item) => [item.release, item]));
+  return { ...detail, releases: (detail.releases || [])
+    .filter((item) => officialByRelease.has(item.release) && item.cloudBuild !== false && !item.withdrawn)
+    .map((item) => ({ ...item, ...officialByRelease.get(item.release), label: `Betaflight ${item.release}`, cloudBuild: true })) };
 }
 async function dispatch(env, recipe, id) {
   const sourceRef = recipe.firmware === "kaack" ? sourceRefFor(env, recipe) : await officialRefFor(env, recipe);
