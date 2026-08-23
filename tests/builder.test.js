@@ -30,8 +30,7 @@ test('workflow validates user-controlled flags before make', async () => {
   assert.match(workflow, /build_command=\(make -j7 "\$\{target\}"/);
   assert.match(workflow, /make uf2 TARGET/);
   assert.match(workflow, /src\/platform src\/main/);
-  assert.match(workflow, /src\/config\/configs -mindepth 3/);
-  assert.match(workflow, /FC_TARGET_MCU/);
+  assert.match(workflow, /src\/config\/configs -type f -path/);
   assert.match(workflow, /CONFIG="\$\{target\}"/);
   assert.match(workflow, /config_ref/);
   assert.match(workflow, /compatible pinned config ref/);

@@ -121,7 +121,7 @@ const sourceTargetIndex = async (env, ref, configuredConfigRef = "") => {
   const configRef = configuredConfigRef || configSubmodule?.sha || "master";
   const configTree = await gitTree(env, configRepository(env), configRef);
   const configTargets = configTree
-    .map((item) => item.path.match(/^configs\/[^/]+\/([^/]+)\/config\.h$/)?.[1])
+    .map((item) => item.path.match(/^configs\/(?:[^/]+\/)?([^/]+)\/config\.h$/)?.[1])
     .filter(Boolean)
     .map((target) => ({ target, manufacturer: "Betaflight config", group: "config" }));
   return [...new Map([...classicTargets, ...configTargets].map((item) => [item.target, item])).values()]
