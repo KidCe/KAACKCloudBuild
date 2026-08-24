@@ -138,7 +138,7 @@ const officialConfigRefFor = async (env, sourceRef, version) => {
   const sourceTree = await gitTree(env, officialRepository(env), sourceRef);
   const pinnedSubmodule = sourceTree.find((item) => item.path === "src/config" && item.type === "commit")?.sha;
   if (pinnedSubmodule && /^[a-f0-9]{40}$/.test(pinnedSubmodule)) return pinnedSubmodule;
-  const legacy45Config = String(env.BETAFLIGHT_45_CONFIG_REF || "18ffb2a74d388ccd6add5aff12b5b1398e0afd0a");
+  const legacy45Config = String(env.BETAFLIGHT_45_CONFIG_REF || "92c695af8a2756d75152b54959de28d48fc25cf7");
   if (/^4\.5\./.test(version) && /^[a-f0-9]{40}$/.test(legacy45Config)) return legacy45Config;
   throw new Error("The selected Betaflight release has no compatible pinned config source");
 };

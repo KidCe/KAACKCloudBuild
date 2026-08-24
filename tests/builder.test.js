@@ -82,6 +82,7 @@ test('worker keeps GitHub credentials server-side', async () => {
   assert.match(worker, /gitTree/);
   assert.match(worker, /configRef/);
   assert.match(worker, /officialConfigRefFor/);
+  assert.match(worker, /92c695af8a2756d75152b54959de28d48fc25cf7/);
   assert.match(worker, /supportsConfigBuild/);
   assert.match(worker, /releases before 4\.5/);
   assert.match(worker, /optionsForRelease/);
