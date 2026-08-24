@@ -282,7 +282,7 @@ async function dispatch(env, recipe, id) {
   const path = `/repos/${env.GITHUB_REPOSITORY}/actions/workflows/build-firmware.yml/dispatches`;
   const configRef = sourceEntry?.configRef || (recipe.firmware === "betaflight" ? await officialConfigRefFor(env, sourceRef, recipe.version) : "");
   await gh(env, path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ref: env.GITHUB_REF || "main", inputs: { build_id: id, firmware_line: recipe.firmware, version: recipe.version, source_ref: sourceRef, config_ref: configRef, target: recipe.target, flags_json: JSON.stringify(recipe.flags) } }) });
-  return { id, mode: "github-actions", status: "queued", cacheKey: await cacheKey({ ...recipe, sourceRef }), message: "Workflow dispatched. Polling GitHub Actions for the build result." };
+  return { id, mode: "github-actions", status: "queued", cacheKey: await cacheKey({ ...recipe, sourceRef, configRef }), message: "Workflow dispatched. Polling GitHub Actions for the build result." };
 }
 async function locateRun(env, id) { const data = await gh(env, `/repos/${env.GITHUB_REPOSITORY}/actions/runs?event=workflow_dispatch&per_page=30`); return data.workflow_runs?.find((run) => run.display_title === `KAACK build ${id}` || run.name === `KAACK build ${id}`); }
 async function buildStatus(env, id) {
