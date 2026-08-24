@@ -152,7 +152,11 @@ function renderReleaseMeta() {
 
 function getFlags() {
   const values = [];
-  for (const id of ['radioProtocol','telemetryProtocol','motorProtocol','osdProtocol']) values.push(...($(id).value || '').split(/\s+/).filter(Boolean));
+  const receiverProtocol = $('radioProtocol').value || '';
+  if (receiverProtocol) values.push('USE_SERIALRX', receiverProtocol);
+  const telemetryProtocol = $('telemetryProtocol').value || '';
+  if (telemetryProtocol) values.push('USE_TELEMETRY', telemetryProtocol);
+  for (const id of ['motorProtocol','osdProtocol']) values.push(...($(id).value || '').split(/\s+/).filter(Boolean));
   document.querySelectorAll('[data-flag]:checked').forEach((x) => values.push(...x.dataset.flag.split(/\s+/).filter(Boolean)));
   const custom = $('customFlags').value.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean);
   return [...new Set([...values, ...custom])].sort();

@@ -52,6 +52,10 @@ test('workflow validates user-controlled flags before make', async () => {
   assert.match(workflow, /DIGIOSD/);
   assert.match(workflow, /content-disposition/);
   assert.match(workflow, /firmwareFileName/);
+  assert.match(workflow, /USE_SERIALRX/);
+  assert.match(workflow, /USE_TELEMETRY/);
+  assert.match(workflow, /DEFAULT_RX_FEATURE/);
+  assert.match(workflow, /FEATURE_RX_SERIAL/);
 });
 
 test('worker keeps GitHub credentials server-side', async () => {
@@ -81,8 +85,10 @@ test('worker keeps GitHub credentials server-side', async () => {
 
 test('builder remembers general options and applies racing defaults', async () => {
   const app = await readFile(new URL('../app.js', import.meta.url), 'utf8');
+  const index = await readFile(new URL('../index.html', import.meta.url), 'utf8');
   assert.match(app, /kaack-cloud-builder\.general-options/);
   assert.match(app, /USE_SERIALRX_CRSF/);
+  assert.match(app, /USE_TELEMETRY/);
   assert.match(app, /USE_TELEMETRY_CRSF/);
   assert.match(app, /USE_DSHOT/);
   assert.match(app, /USE_OSD_HD/);
@@ -100,4 +106,6 @@ test('builder remembers general options and applies racing defaults', async () =
   assert.match(app, /racingOptions/);
   assert.match(app, /additionalOptions/);
   assert.match(app, /RACING_DEFAULT_FLAGS/);
+  assert.match(index, /Serial RX via UART/);
+  assert.match(index, /report_cell_voltage/);
 });

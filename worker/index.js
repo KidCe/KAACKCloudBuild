@@ -133,7 +133,10 @@ const normalize = (input) => {
   const version = String(input.version || "");
   const sourceRef = String(input.sourceRef || "");
   const target = String(input.target || "");
-  const flags = [...new Set((Array.isArray(input.flags) ? input.flags : []).flatMap((x) => String(x).split(/\s+/)).filter(Boolean))].sort();
+  const flags = [...new Set((Array.isArray(input.flags) ? input.flags : []).flatMap((x) => String(x).split(/\s+/)).filter(Boolean))];
+  if (flags.some((flag) => /^USE_SERIALRX_/.test(flag)) && !flags.includes("USE_SERIALRX")) flags.push("USE_SERIALRX");
+  if (flags.some((flag) => /^USE_TELEMETRY_/.test(flag)) && !flags.includes("USE_TELEMETRY")) flags.push("USE_TELEMETRY");
+  flags.sort();
   if (!/^[A-Za-z0-9._-]+$/.test(version) || (sourceRef && !/^[A-Za-z0-9._\/-]+$/.test(sourceRef)) || !/^[A-Z0-9_-]+$/.test(target) || !flags.every(validToken)) throw new Error("Invalid version, source ref, target or build flag");
   const firmware = String(input.firmware || "kaack").toLowerCase();
   if (!/^(kaack|betaflight)$/.test(firmware)) throw new Error("Invalid firmware line");
