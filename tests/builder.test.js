@@ -57,6 +57,8 @@ test('workflow validates user-controlled flags before make', async () => {
   assert.match(workflow, /DIGIOSD/);
   assert.match(workflow, /content-disposition/);
   assert.match(workflow, /firmwareFileName/);
+  assert.match(workflow, /-DBUILD_KEY=\$\{build_key\} -DRELEASE_NAME=\$\{release_name\}/);
+  assert.doesNotMatch(workflow, /BUILD_KEY=\\\\\\"/);
   assert.match(workflow, /USE_SERIALRX/);
   assert.match(workflow, /USE_TELEMETRY/);
   assert.doesNotMatch(workflow, /DEFAULT_RX_FEATURE/);

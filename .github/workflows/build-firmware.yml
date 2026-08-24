@@ -148,7 +148,7 @@ jobs:
           mapfile -t flags < <(printf '%s' "${FLAGS_JSON}" | jq -r '.[]')
           build_key="${BUILD_KEY:-${BUILD_ID}}"
           release_name="${RELEASE_NAME:-${VERSION}}"
-          extra_flags="-DCLOUD_BUILD -DBUILD_KEY=\\\"${build_key}\\\" -DRELEASE_NAME=\\\"${release_name}\\\""
+          extra_flags="-DCLOUD_BUILD -DBUILD_KEY=${build_key} -DRELEASE_NAME=${release_name}"
           for flag in "${flags[@]}"; do
             [[ "${flag}" =~ ^USE_[A-Z0-9_]+$ ]] || { echo "Invalid build flag: ${flag}"; exit 1; }
             extra_flags+=" -D${flag}"
