@@ -36,7 +36,12 @@ test('workflow validates user-controlled flags before make', async () => {
   assert.match(workflow, /CONFIG="\$\{target\}"/);
   assert.match(workflow, /config_ref/);
   assert.match(workflow, /compatible pinned config ref/);
-  assert.match(workflow, /No non-empty HEX firmware artifact found/);
+  assert.match(workflow, /immutable source commit/);
+  assert.match(workflow, /8cd44381217948c0b2b5087f12e17dde15d6a25c/);
+  assert.match(workflow, /Expected exactly one target-specific HEX artifact/);
+  assert.match(workflow, /HEX artifact does not match the target-specific ELF/);
+  assert.match(workflow, /valid Intel HEX end-of-file record/);
+  assert.match(workflow, /arm-none-eabi-objcopy/);
   assert.match(workflow, /-size \+0c/);
   assert.match(workflow, /limonspb\/betaflight/);
   assert.match(workflow, /upload-artifact@v4/);
@@ -54,8 +59,7 @@ test('workflow validates user-controlled flags before make', async () => {
   assert.match(workflow, /firmwareFileName/);
   assert.match(workflow, /USE_SERIALRX/);
   assert.match(workflow, /USE_TELEMETRY/);
-  assert.match(workflow, /DEFAULT_RX_FEATURE/);
-  assert.match(workflow, /FEATURE_RX_SERIAL/);
+  assert.doesNotMatch(workflow, /DEFAULT_RX_FEATURE/);
 });
 
 test('worker keeps GitHub credentials server-side', async () => {
@@ -76,6 +80,8 @@ test('worker keeps GitHub credentials server-side', async () => {
   assert.match(worker, /gitTree/);
   assert.match(worker, /configRef/);
   assert.match(worker, /officialConfigRefFor/);
+  assert.match(worker, /supportsConfigBuild/);
+  assert.match(worker, /releases before 4\.5/);
   assert.match(worker, /optionsForRelease/);
   assert.match(worker, /USE_LED_STRIP_64/);
   assert.match(worker, /USE_SDCARD/);
@@ -85,11 +91,12 @@ test('worker keeps GitHub credentials server-side', async () => {
 
 test('builder remembers general options and applies racing defaults', async () => {
   const app = await readFile(new URL('../app.js', import.meta.url), 'utf8');
+  const flags = await readFile(new URL('../shared/build-flags.js', import.meta.url), 'utf8');
   const index = await readFile(new URL('../index.html', import.meta.url), 'utf8');
   assert.match(app, /kaack-cloud-builder\.general-options/);
   assert.match(app, /USE_SERIALRX_CRSF/);
-  assert.match(app, /USE_TELEMETRY/);
-  assert.match(app, /USE_TELEMETRY_CRSF/);
+  assert.match(flags, /USE_TELEMETRY/);
+  assert.match(flags, /USE_TELEMETRY_CRSF/);
   assert.match(app, /USE_DSHOT/);
   assert.match(app, /USE_OSD_HD/);
   assert.match(app, /firmwareLines/);

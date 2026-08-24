@@ -43,7 +43,7 @@
                 <label class="field"><span>Motor</span><select id="motorProtocol"></select></label>
                 <label class="field"><span>OSD</span><select id="osdProtocol"></select></label>
               </div>
-              <p class="field-hint receiver-hint"><strong>Receiver mode:</strong> Serial RX via UART + selected protocol. Enable Serial RX on the receiver UART in Ports after flashing. <code>report_cell_voltage</code> is a runtime setting, not a build flag.</p>
+              <p class="field-hint receiver-hint"><strong>Receiver mode:</strong> Serial RX via UART + selected protocol. Matching telemetry is included automatically for CRSF/ELRS, FPORT, GHST and JETI. Enable Serial RX on the receiver UART in Ports after flashing. <code>report_cell_voltage</code> is a runtime setting, not a build flag.</p>
             </div>
 
             <details class="advanced-options" open>
@@ -51,8 +51,8 @@
               <p class="advanced-hint">Racing essentials are shown first. Additional Betaflight options stay grouped below and remain optional. Your selections are remembered in this browser.</p>
               <section class="flag-group primary-flags"><h3>Racing essentials</h3><div id="racingOptions" class="check-grid"></div></section>
               <details class="secondary-options"><summary>Additional features</summary><div id="additionalOptions" class="check-grid"></div></details>
-              <label class="expert-field"><span>Custom defines <em>optional</em></span><textarea id="customFlags" rows="2" placeholder="USE_FEATURE_NAME USE_ANOTHER_FEATURE"></textarea></label>
-              <p class="field-hint" id="customFlagHint">Uppercase USE_* defines only.</p>
+              <label class="expert-field"><span>Custom defines <em>optional</em></span><textarea id="customFlags" rows="2" placeholder="OSD_QUICK_MENU SMARTAUDIO_NOPULLDOWN"></textarea></label>
+              <p class="field-hint" id="customFlagHint">Configurator-style uppercase defines; USE_ is optional.</p>
             </details>
 
             <div class="build-footer"><div class="recipe-preview"><span class="recipe-icon">↗</span><div><strong id="recipeTitle">Ready</strong><small id="recipeSummary">Select a target and build options.</small></div></div><button id="buildButton" class="primary-button" type="submit"><span>Build &amp; download</span><b>→</b></button></div>

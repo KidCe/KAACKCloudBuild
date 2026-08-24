@@ -52,9 +52,11 @@ Deploy `worker/` to Cloudflare Workers locally with `cd worker; npx wrangler dep
 - For the upstream fallback, use `UPSTREAM_BUILD_API` and `CATALOG_PROBE_TARGET` instead.
 - In the builder repository, set the Actions variable `FIRMWARE_REPOSITORY` to the same approved firmware source.
 
-When R2 is not configured, the Worker proxies the GitHub Actions artifact ZIP through `/api/builds/{id}/download`, so the first end-to-end test does not expose a GitHub token to the browser. For a direct `.hex` download, create the R2 bucket and bindings described below; the Worker then serves the verified firmware file itself.
+When R2 is not configured, the Worker proxies the GitHub Actions artifact ZIP through `/api/builds/{id}/download`, so the first end-to-end test does not expose a GitHub token to the browser. For a direct `.hex` download, create the R2 bucket and bindings described below; the Worker then serves the structurally checked firmware file itself.
 
 The Worker never accepts arbitrary shell arguments. The live source catalog is generated from classic `src/platform/*/target/*` targets plus `src/config/configs/*/config.h` targets from the checked-out config submodule or the release-specific pinned config ref. Releases are mapped to allow-listed refs, and flags are normalized and restricted to uppercase `USE_*` defines. The workflow validates them again before calling `make`. This keeps the community-facing label `KAACK 4.5.3 / V19` separate from the technical source ref `KAACK-4.5.0`.
+
+The option catalog comes directly from the official Betaflight API. KAACK 4.5.3 / V19 does not implement `USE_CHIRP`, `USE_OPTICALFLOW`, or `USE_SERIALRX_MAVLINK`; those controls are visibly disabled and the Worker rejects attempts to inject them as custom defines. Official Betaflight releases before 4.5 are excluded because they require the legacy unified-target build path. See the [compatibility audit](research/betaflight-builder-compatibility-audit.md) for the remaining evidence and hardware-validation limits.
 
 For the first live test, the artifact download is the GitHub Actions artifact ZIP. For the direct firmware path, activate R2, create a bucket named `kaack-firmware`, uncomment the `FIRMWARE_BUCKET` binding in `worker/wrangler.toml`, and add these repository settings:
 
@@ -62,7 +64,7 @@ For the first live test, the artifact download is the GitHub Actions artifact ZI
 - Secret `R2_SECRET_ACCESS_KEY`: the R2 S3 Secret Access Key.
 - Variable `R2_BUCKET_NAME`: `kaack-firmware`.
 
-Use an R2 API token with **Object Read & Write** scoped only to this bucket. The workflow publishes the verified descriptive `.hex`/`.uf2` filename, `manifest.json` and checksum under the build ID. The Worker then serves the firmware directly from `/api/builds/{id}/download`; GitHub artifacts remain the audit/fallback copy rather than the normal user download.
+Use an R2 API token with **Object Read & Write** scoped only to this bucket. The workflow publishes the structurally checked descriptive `.hex`/`.uf2` filename, `manifest.json` and checksum under the build ID. The Worker then serves the firmware directly from `/api/builds/{id}/download`; GitHub artifacts remain the audit/fallback copy rather than the normal user download.
 
 ## Reference-build verification
 

@@ -23,7 +23,7 @@ on:
         default: ""
         type: string
       source_ref:
-        description: "Validated Git tag or branch to check out"
+        description: "Validated immutable source commit to check out"
         required: true
         type: string
       target:
@@ -92,14 +92,15 @@ jobs:
           [[ -z "${RELEASE_NAME}" || "${RELEASE_NAME}" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "Invalid release name"; exit 1; }
           if [[ "${FIRMWARE_LINE}" = "kaack" ]]; then
             test "${FIRMWARE_REPOSITORY}" = "limonspb/betaflight" || { echo "Only limonspb/betaflight is approved for KAACK builds."; exit 1; }
-            case "${SOURCE_REF}" in
-              KAACK-4.5.0) test "${CONFIG_REF}" = "9a9f899aab4c4ffaa74f973a643447b48453ff54" || { echo "KAACK-4.5.0 requires its compatible pinned config ref."; exit 1; } ;;
-              KAACK-2025.12) test -z "${CONFIG_REF}" || { echo "KAACK-2025.12 must use its checked-out config submodule."; exit 1; } ;;
-              *) echo "Source ref is not an approved KAACK branch: ${SOURCE_REF}"; exit 1 ;;
+            case "${VERSION}:${SOURCE_REF}" in
+              kaack-4.5.3-v19:8cd44381217948c0b2b5087f12e17dde15d6a25c) test "${CONFIG_REF}" = "9a9f899aab4c4ffaa74f973a643447b48453ff54" || { echo "KAACK 4.5.3 / V19 requires its compatible pinned config ref."; exit 1; } ;;
+              kaack-2025.12:3b419ca431ba5ea791d7924c8c5b266b911da5b1) test -z "${CONFIG_REF}" || { echo "KAACK 2025.12 must use its checked-out config submodule."; exit 1; } ;;
+              *) echo "Source commit is not approved for ${VERSION}: ${SOURCE_REF}"; exit 1 ;;
             esac
           else
             test "${FIRMWARE_REPOSITORY}" = "betaflight/betaflight" || { echo "Only betaflight/betaflight is approved for Betaflight builds."; exit 1; }
-            [[ "${SOURCE_REF}" =~ ^(master|[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9._-]+)?)$ ]] || { echo "Source ref is not an approved Betaflight release ref: ${SOURCE_REF}"; exit 1; }
+            [[ "${SOURCE_REF}" =~ ^[a-f0-9]{40}$ ]] || { echo "Source ref is not an immutable Betaflight release commit: ${SOURCE_REF}"; exit 1; }
+            [[ "${CONFIG_REF}" =~ ^[a-f0-9]{40}$ ]] || { echo "Betaflight builds require an immutable config commit."; exit 1; }
           fi
 
       - name: Checkout firmware source
@@ -152,15 +153,12 @@ jobs:
             [[ "${flag}" =~ ^USE_[A-Z0-9_]+$ ]] || { echo "Invalid build flag: ${flag}"; exit 1; }
             extra_flags+=" -D${flag}"
           done
-          if printf '%s\n' "${flags[@]}" | grep -qx 'USE_SERIALRX'; then
-            # KAACK derives DEFAULT_RX_FEATURE from USE_SERIALRX. Keep the runtime
-            # default on Serial RX so a serial protocol cannot silently fall back to MSP.
-            extra_flags+=" -DDEFAULT_RX_FEATURE=FEATURE_RX_SERIAL"
-          fi
           if [[ -n "${CONFIG_REF}" ]]; then
             rm -rf src/config
             git clone https://github.com/betaflight/config src/config
             git -C src/config checkout --detach "${CONFIG_REF}"
+          elif [[ -d src/config/configs ]]; then
+            echo "Using the config submodule pinned by the firmware source commit."
           else
             make configs
           fi
@@ -179,7 +177,7 @@ jobs:
           "${build_command[@]}"
           echo "Building optional UF2 with: ${uf2_command[*]}"
           if ! "${uf2_command[@]}"; then
-            echo "UF2 output is unavailable for ${target}; continuing with the verified HEX artifact."
+            echo "UF2 output is unavailable for ${target}; continuing with the structurally checked HEX artifact."
           fi
 
       - name: Collect firmware and provenance
@@ -231,8 +229,32 @@ jobs:
           flags_slug="$(IFS=_; printf '%s' "${flag_tokens[*]}")"
           [[ -n "${flags_slug}" ]] || flags_slug="NOFLAGS"
           firmware_stem="$(slug "${REQUEST_TARGET}")_$(version_slug)_${flags_slug}"
-          hex_source="$(find firmware/obj -maxdepth 1 -type f -name '*.hex' -size +0c -print -quit)"
-          test -n "${hex_source}" || { echo "No non-empty HEX firmware artifact found"; exit 1; }
+          mapfile -t hex_candidates < <(find firmware/obj -maxdepth 1 -type f -name "*_${REQUEST_TARGET}.hex" -size +0c -print)
+          [[ "${#hex_candidates[@]}" -eq 1 ]] || { echo "Expected exactly one target-specific HEX artifact for ${REQUEST_TARGET}, found ${#hex_candidates[@]}"; exit 1; }
+          hex_source="${hex_candidates[0]}"
+          mapfile -t elf_candidates < <(find firmware/obj -type f -name "*_${REQUEST_TARGET}.elf" -size +0c -print)
+          [[ "${#elf_candidates[@]}" -eq 1 ]] || { echo "Expected exactly one target-specific ELF for ${REQUEST_TARGET}, found ${#elf_candidates[@]}"; exit 1; }
+          elf_source="${elf_candidates[0]}"
+          tail -n 1 "${hex_source}" | tr -d '\r' | grep -qx ':00000001FF' || { echo "HEX artifact has no valid Intel HEX end-of-file record"; exit 1; }
+          objcopy="$(find firmware/tools -type f -name 'arm-none-eabi-objcopy*' -print -quit)"
+          test -n "${objcopy}" || { echo "ARM objcopy is unavailable for HEX validation"; exit 1; }
+          chmod +x "${objcopy}"
+          config_path="$(find firmware/src/config/configs -type f -path "*/${REQUEST_TARGET}/config.h" -print -quit 2>/dev/null || true)"
+          exst_vma=""
+          [[ -z "${config_path}" ]] || exst_vma="$(awk '$2 == "FC_VMA_ADDRESS" { print $3; exit }' "${config_path}")"
+          if [[ -n "${exst_vma}" ]]; then
+            mapfile -t bin_candidates < <(find firmware/obj -maxdepth 1 -type f -name "*_${REQUEST_TARGET}.bin" -size +0c -print)
+            [[ "${#bin_candidates[@]}" -eq 1 ]] || { echo "Expected exactly one external-storage BIN for ${REQUEST_TARGET}, found ${#bin_candidates[@]}"; exit 1; }
+            "${objcopy}" -I binary -O ihex --adjust-vma="${exst_vma}" "${bin_candidates[0]}" output/.firmware-from-elf.hex
+          else
+            "${objcopy}" -O ihex --set-start 0x8000000 "${elf_source}" output/.firmware-from-elf.hex
+          fi
+          cmp -s "${hex_source}" output/.firmware-from-elf.hex || { echo "HEX artifact does not match the target-specific ELF"; exit 1; }
+          rm output/.firmware-from-elf.hex
+          "${objcopy}" -I ihex -O binary "${hex_source}" output/.firmware-validation.bin
+          test -s output/.firmware-validation.bin || { echo "HEX artifact decodes to an empty binary"; exit 1; }
+          rm output/.firmware-validation.bin
+          strings -a "${elf_source}" | grep -Fqx "${REQUEST_TARGET}" || { echo "ELF does not contain the requested target identity"; exit 1; }
           hex_filename="${firmware_stem}.hex"
           cp "${hex_source}" "output/${hex_filename}"
           uf2_source="$(find firmware/obj -maxdepth 1 -type f -name '*.uf2' -size +0c -print -quit)"
@@ -270,7 +292,7 @@ jobs:
           path: output/
           retention-days: 30
 
-      - name: Publish verified firmware to Cloudflare R2
+      - name: Publish checked firmware to Cloudflare R2
         shell: bash
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}

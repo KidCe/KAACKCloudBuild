@@ -1,3 +1,5 @@
+import { autoTelemetryForRadio, canonicalizeBuildDefine, expandBuildFlags, KAACK_SOURCE_FLAGS } from './shared/build-flags.js';
+
 const config = window.KAACK_CONFIG || {};
 const DEFAULT_API_BASE = "https://kaack-cloud-builder-api.n-kitsikoudis.workers.dev";
 const apiBase = (config.apiBase || DEFAULT_API_BASE).replace(/\/$/, "");
@@ -9,7 +11,12 @@ const RACING_DEFAULT_FLAGS = new Set(["USE_LED_STRIP", "USE_LED_STRIP_64", "USE_
 const RACING_OPTION_VALUES = new Set(["USE_LED_STRIP", "USE_LED_STRIP_64", "USE_VTX"]);
 const state = { catalog: null, options: null, releases: [], targets: [], firmwareLine: DEFAULT_FIRMWARE_LINE, live: false, selected: new Set(), build: null };
 
-const api = async (path, init) => { const response = await fetch(`${apiBase}${path}`, init); if (!response.ok) throw new Error(`API ${response.status}`); return response.json(); };
+const api = async (path, init) => {
+  const response = await fetch(`${apiBase}${path}`, init);
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error || `API ${response.status}`);
+  return body;
+};
 
 async function loadCatalog() {
   try {
@@ -96,39 +103,55 @@ async function loadTargetReleases(target) {
 
 function renderOptions() {
   const opts = state.options || {};
-  const telemetryOptions = [...(opts.telemetryProtocols || [])];
-  if (!telemetryOptions.some((x) => x.value === "USE_TELEMETRY_CRSF")) telemetryOptions.unshift({ name: "Crossfire (CRSF)", value: "USE_TELEMETRY_CRSF", default: true });
   const osdOptions = (opts.osdProtocols || (opts.generalOptions || []).filter((x) => x.group === "OSD")).map((x) => ({ ...x, name: x.groupedName || x.name?.replace(/^OSD \((.*)\)$/, "$1") }));
+  if (!osdOptions.some((option) => option.value === "")) osdOptions.unshift({ name: "None", value: "", default: false });
   fillSelect('radioProtocol', opts.radioProtocols || [], 'USE_SERIALRX_CRSF');
-  fillSelect('telemetryProtocol', telemetryOptions, 'USE_TELEMETRY_CRSF');
   fillSelect('motorProtocol', opts.motorProtocols || [], 'USE_DSHOT');
   fillSelect('osdProtocol', osdOptions, 'USE_OSD_HD');
+  renderTelemetryProtocol();
   const savedFlags = readGeneralOptions();
   const generalOptions = (opts.generalOptions || []).filter((x) => !x.group);
   const renderFlag = (x) => {
-    const label = x.value === "USE_RACE_PRO" ? "Race Pro (optional)" : x.name;
-    const checked = savedFlags ? savedFlags.includes(x.value) : state.firmwareLine === "kaack" ? RACING_DEFAULT_FLAGS.has(x.value) : Boolean(x.default);
-    return `<label class="check"><input type="checkbox" data-flag="${escapeHtml(x.value)}" ${checked ? "checked" : ""} /><span>${escapeHtml(label)}</span></label>`;
+    const sourceRequired = state.firmwareLine === "kaack" && KAACK_SOURCE_FLAGS.has(x.value);
+    const label = sourceRequired ? `${x.name} (included by KAACK)` : x.unsupported ? `${x.name} (not in this KAACK source)` : x.name;
+    const checked = !x.unsupported && (sourceRequired || (savedFlags ? savedFlags.includes(x.value) : state.firmwareLine === "kaack" ? RACING_DEFAULT_FLAGS.has(x.value) : Boolean(x.default)));
+    return `<label class="check"><input type="checkbox" data-flag="${escapeHtml(x.value)}" ${checked ? "checked" : ""} ${sourceRequired || x.unsupported ? "disabled" : ""} /><span>${escapeHtml(label)}</span></label>`;
   };
   $('racingOptions').innerHTML = generalOptions.filter((x) => RACING_OPTION_VALUES.has(x.value)).map(renderFlag).join("");
   $('additionalOptions').innerHTML = generalOptions.filter((x) => !RACING_OPTION_VALUES.has(x.value)).map(renderFlag).join("");
   state.selected = new Set([...document.querySelectorAll('[data-flag]:checked')].flatMap((x) => x.dataset.flag.split(" ")));
-  document.querySelectorAll('[data-flag]').forEach((x) => x.addEventListener('change', () => { persistGeneralOptions(); updateRecipe(); }));
-  ['radioProtocol','telemetryProtocol','motorProtocol','osdProtocol'].forEach((id) => $(id).addEventListener('change', updateRecipe));
+  document.querySelectorAll('[data-flag]').forEach((x) => { x.onchange = () => { persistGeneralOptions(); updateRecipe(); }; });
+  $('radioProtocol').onchange = () => { renderTelemetryProtocol(); updateRecipe(); };
+  ['telemetryProtocol','motorProtocol','osdProtocol'].forEach((id) => { $(id).onchange = updateRecipe; });
   updateRecipe();
 }
 
-function fillSelect(id, options, preferredValue) {
-  const selected = options.find((x) => x.value === preferredValue)?.value || options.find((x) => x.default)?.value || options[0]?.value;
-  $(id).innerHTML = options.map((x) => `<option value="${escapeHtml(x.value)}" ${x.value === selected ? "selected" : ""}>${escapeHtml(x.name || x.label || x.value || "None")}</option>`).join("");
+function renderTelemetryProtocol() {
+  const radioFlag = $('radioProtocol').value || '';
+  const radioOption = (state.options?.radioProtocols || []).find((option) => option.value === radioFlag);
+  const automaticTelemetry = autoTelemetryForRadio(radioFlag);
+  if (radioOption?.includesTelemetry === true || automaticTelemetry) {
+    $('telemetryProtocol').innerHTML = `<option value="">Automatically included</option>`;
+    $('telemetryProtocol').disabled = true;
+    return;
+  }
+  $('telemetryProtocol').disabled = false;
+  fillSelect('telemetryProtocol', state.options?.telemetryProtocols || [], '');
 }
 
-function readGeneralOptions() { try { const saved = JSON.parse(localStorage.getItem(GENERAL_OPTIONS_KEY)); return Array.isArray(saved) ? saved : null; } catch { return null; } }
-function persistGeneralOptions() { try { localStorage.setItem(GENERAL_OPTIONS_KEY, JSON.stringify([...document.querySelectorAll('[data-flag]:checked')].map((x) => x.dataset.flag))); } catch {} }
+function fillSelect(id, options, preferredValue) {
+  const available = options.filter((option) => !option.unsupported);
+  const selected = available.find((x) => x.value === preferredValue)?.value || available.find((x) => x.default)?.value || available[0]?.value;
+  $(id).innerHTML = options.map((x) => `<option value="${escapeHtml(x.value)}" ${x.value === selected ? "selected" : ""} ${x.unsupported ? "disabled" : ""}>${escapeHtml(`${x.name || x.label || x.value || "None"}${x.unsupported ? " (not in this KAACK source)" : ""}`)}</option>`).join("");
+}
+
+function generalOptionsStorageKey() { return `${GENERAL_OPTIONS_KEY}.${state.firmwareLine}.${$('version').value}`; }
+function readGeneralOptions() { try { const saved = JSON.parse(localStorage.getItem(generalOptionsStorageKey())); return Array.isArray(saved) ? saved : null; } catch { return null; } }
+function persistGeneralOptions() { try { localStorage.setItem(generalOptionsStorageKey(), JSON.stringify([...document.querySelectorAll('[data-flag]:checked')].map((x) => x.dataset.flag))); } catch {} }
 
 function renderTarget() {
   const target = state.targets.find((x) => x.target === $('target').value);
-  $('targetMeta').innerHTML = target ? `<span>${escapeHtml(target.manufacturer || "Unknown manufacturer")} · ${escapeHtml(target.mcu || "MCU unknown")}</span><span class="supported">${target.group === "supported" ? "● Supported" : "● Catalogued"}</span>` : "";
+  $('targetMeta').innerHTML = target ? `<span>${escapeHtml(target.manufacturer || "Unknown manufacturer")} · ${escapeHtml(target.mcu || "MCU unknown")}</span><span class="supported">${target.group === "build-tested" ? "● Build-tested" : "● Catalogued"}</span>` : "";
 }
 function renderReleaseMeta() {
   const r = state.releases.find((x) => x.release === $('version').value);
@@ -152,21 +175,21 @@ function renderReleaseMeta() {
 
 function getFlags() {
   const values = [];
-  const receiverProtocol = $('radioProtocol').value || '';
-  if (receiverProtocol) values.push('USE_SERIALRX', receiverProtocol);
-  const telemetryProtocol = $('telemetryProtocol').value || '';
-  if (telemetryProtocol) values.push('USE_TELEMETRY', telemetryProtocol);
-  for (const id of ['motorProtocol','osdProtocol']) values.push(...($(id).value || '').split(/\s+/).filter(Boolean));
+  for (const id of ['radioProtocol','telemetryProtocol','motorProtocol','osdProtocol']) values.push(...($(id).value || '').split(/\s+/).filter(Boolean));
   document.querySelectorAll('[data-flag]:checked').forEach((x) => values.push(...x.dataset.flag.split(/\s+/).filter(Boolean)));
   const custom = $('customFlags').value.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean);
-  return [...new Set([...values, ...custom])].sort();
+  return expandBuildFlags([...values, ...custom], { firmware: state.firmwareLine, version: $('version').value });
 }
 function updateRecipe() {
   const flags = getFlags(); const target = $('target').value || "target"; const version = $('version').value || "version";
-  const bad = $('customFlags').value.split(/[\s,]+/).filter(Boolean).find((x) => !/^USE_[A-Z0-9_]+$/.test(x));
-  $('customFlagHint').classList.toggle('invalid', Boolean(bad)); $('customFlagHint').textContent = bad ? `Invalid define: ${bad}. Use uppercase USE_* names only.` : "Uppercase USE_* defines only.";
+  const customTokens = $('customFlags').value.split(/[\s,]+/).filter(Boolean);
+  const bad = customTokens.find((x) => !canonicalizeBuildDefine(x));
+  const unavailable = new Set([...(state.options?.radioProtocols || []), ...(state.options?.telemetryProtocols || []), ...(state.options?.motorProtocols || []), ...(state.options?.generalOptions || [])].filter((option) => option.unsupported).map((option) => option.value));
+  const unsupported = customTokens.map(canonicalizeBuildDefine).find((flag) => flag && unavailable.has(flag));
+  $('customFlagHint').classList.toggle('invalid', Boolean(bad || unsupported));
+  $('customFlagHint').textContent = bad ? `Invalid define: ${bad}. Use uppercase identifiers only.` : unsupported ? `${unsupported} is not implemented by this KAACK source.` : "Configurator-style uppercase defines; USE_ is optional.";
   $('flagCount').textContent = `${flags.length} flag${flags.length === 1 ? "" : "s"}`; $('recipeTitle').textContent = `${version} · ${target}`; $('recipeSummary').textContent = `${flags.slice(0, 4).join(" · ")}${flags.length > 4 ? ` · +${flags.length - 4} more` : ""}`;
-  $('buildButton').disabled = Boolean(bad || !target || !version);
+  $('buildButton').disabled = Boolean(bad || unsupported || !target || !version);
 }
 
 async function submitBuild(event) {
@@ -174,7 +197,7 @@ async function submitBuild(event) {
   if ($('buildButton').disabled) return;
   if (!state.live) { setUnavailable(new Error("The live builder is unavailable.")); return; }
   const selectedRelease = state.releases.find((release) => release.release === $('version').value);
-  const request = { firmware: $('firmware').value, version: $('version').value, sourceRef: selectedRelease?.ref || selectedRelease?.sourceRef || "", target: $('target').value, flags: getFlags(), builderVersion: "0.2.0" };
+  const request = { firmware: $('firmware').value, version: $('version').value, sourceRef: selectedRelease?.buildRef || selectedRelease?.ref || selectedRelease?.sourceRef || "", target: $('target').value, flags: getFlags(), builderVersion: "0.2.0" };
   setStatus('running', 'Submitting build', 'Normalizing recipe and checking the configured builder…', 24);
   try { state.build = await api('/api/builds', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(request) }); pollBuild(state.build); }
   catch (error) { setStatus('error', 'Build request failed', error.message, 0); }
@@ -201,7 +224,7 @@ function showResult(build) {
   const downloadUrl = build.downloadUrl ? resolveDownloadUrl(build.downloadUrl) : '';
   const direct = build.downloadFormat === 'firmware';
   const label = direct ? 'Download firmware' : 'Download ZIP artifact';
-  const note = direct ? '<div class="download-note"><strong>Verified firmware</strong> The worker served the verified firmware file directly.</div>' : '<div class="download-note"><strong>ZIP artifact</strong> Unpack the ZIP and use the descriptive HEX file inside. Keep manifest.json and SHA256SUMS with it.</div>';
+  const note = direct ? '<div class="download-note"><strong>Checked firmware</strong> The file passed target-name, ELF-to-HEX, Intel HEX and checksum checks. Bench-test with props removed.</div>' : '<div class="download-note"><strong>ZIP artifact</strong> Unpack the ZIP and use the descriptive HEX file inside. Keep manifest.json and SHA256SUMS with it.</div>';
   panel.innerHTML = `<div class="result-meta"><span>Build ID <strong>${escapeHtml(build.id || "—")}</strong></span><span>Cache key <strong>${escapeHtml((build.cacheKey || "—").slice(0,18))}</strong></span></div>${downloadUrl ? `<a href="${escapeHtml(downloadUrl)}" download>${label} ↓</a>${note}` : '<span class="field-hint">The live worker did not return a download URL.</span>'}`;
 }
 function resolveDownloadUrl(url) { try { return new URL(url, apiBase || location.href).href; } catch { return url; } }

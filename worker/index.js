@@ -1,3 +1,5 @@
+import { canonicalizeBuildDefine, expandBuildFlags } from "../shared/build-flags.js";
+
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
   "access-control-allow-origin": "*",
@@ -86,59 +88,76 @@ const parseJson = (value, fallback) => {
   try { return value ? JSON.parse(value) : fallback; } catch { throw new Error("Invalid JSON in worker configuration"); }
 };
 const optionReleaseFor = (release) => String(release || "").replace(/^kaack-/i, "").replace(/-v\d+$/i, "");
-const mergeOptions = (primary, fallback) => [...new Map([...(primary || []), ...(fallback || [])].map((item) => [item.value, item])).values()];
 const optionsForRelease = async (env, release) => {
   const upstreamRelease = optionReleaseFor(release);
-  if (!/^[A-Za-z0-9._-]+$/.test(upstreamRelease)) return DEFAULT_OPTIONS;
+  if (!/^[A-Za-z0-9._-]+$/.test(upstreamRelease)) throw new Error("Invalid option release");
   const response = await fetch(`${upstream(env)}/api/options/${encodeURIComponent(upstreamRelease)}`);
-  if (!response.ok) return DEFAULT_OPTIONS;
+  if (!response.ok) throw new Error("Official Betaflight build options are unavailable for this release");
   const upstreamOptions = await response.json();
+  const sourceEntry = sourceRefs(env).find((entry) => entry.release === release);
+  const unsupportedFlags = new Set(sourceEntry?.unsupportedFlags || []);
+  const annotate = (options) => (options || []).map((option) => ({ ...option, unsupported: unsupportedFlags.has(option.value) }));
   return {
-    ...DEFAULT_OPTIONS,
     ...upstreamOptions,
-    radioProtocols: mergeOptions(upstreamOptions.radioProtocols, DEFAULT_OPTIONS.radioProtocols),
-    telemetryProtocols: mergeOptions([{ name: "Crossfire (CRSF)", value: "USE_TELEMETRY_CRSF", default: true }], upstreamOptions.telemetryProtocols),
-    motorProtocols: mergeOptions(upstreamOptions.motorProtocols, DEFAULT_OPTIONS.motorProtocols),
-    generalOptions: mergeOptions(upstreamOptions.generalOptions, DEFAULT_OPTIONS.generalOptions)
+    radioProtocols: annotate(upstreamOptions.radioProtocols),
+    telemetryProtocols: annotate(upstreamOptions.telemetryProtocols),
+    motorProtocols: annotate(upstreamOptions.motorProtocols),
+    generalOptions: annotate(upstreamOptions.generalOptions),
+    osdProtocols: annotate(upstreamOptions.generalOptions)
+      .filter((option) => option.group === "OSD")
+      .map((option) => ({ ...option, name: option.groupedName || option.name }))
   };
 };
 const sourceRefs = (env) => {
   const configured = parseJson(env.FIRMWARE_SOURCE_REFS, null);
   if (configured !== null) {
-    if (!Array.isArray(configured) || !configured.length || configured.some((x) => !x || !/^[A-Za-z0-9._-]+$/.test(x.release) || !/^[A-Za-z0-9._\/-]+$/.test(x.ref) || (x.configRef && !/^[A-Za-z0-9._\/-]+$/.test(x.configRef)))) throw new Error("FIRMWARE_SOURCE_REFS must be a non-empty JSON array of safe release/ref entries");
+    if (!Array.isArray(configured) || !configured.length || configured.some((x) => !x || !/^[A-Za-z0-9._-]+$/.test(x.release) || !/^[A-Za-z0-9._\/-]+$/.test(x.ref) || (x.buildRef && !/^[a-f0-9]{40}$/.test(x.buildRef)) || (x.configRef && !/^[A-Za-z0-9._\/-]+$/.test(x.configRef)) || (x.unsupportedFlags && (!Array.isArray(x.unsupportedFlags) || !x.unsupportedFlags.every(validToken))))) throw new Error("FIRMWARE_SOURCE_REFS must be a non-empty JSON array of safe release/ref entries");
     return configured;
   }
   return [];
 };
+const buildRefForEntry = (entry) => entry?.buildRef || entry?.ref || "";
 const sourceRefFor = (env, recipe) => {
   const entry = sourceRefs(env).find((x) => x.release === recipe.version);
   if (!entry) throw new Error("This release is not configured for the selected KAACK source");
-  if (recipe.sourceRef && recipe.sourceRef !== entry.ref) throw new Error("The source ref does not match the selected release");
-  if (!/^[A-Za-z0-9._\/-]+$/.test(entry.ref)) throw new Error("Invalid configured source ref");
-  return entry.ref;
+  const buildRef = buildRefForEntry(entry);
+  if (recipe.sourceRef && recipe.sourceRef !== buildRef) throw new Error("The source ref does not match the selected release");
+  if (!/^[A-Za-z0-9._\/-]+$/.test(buildRef)) throw new Error("Invalid configured source ref");
+  return buildRef;
 };
 const officialRefFor = async (env, recipe) => {
   const response = await fetch(`${upstream(env)}/api/releases`);
   if (!response.ok) throw new Error("Official Betaflight release catalog unavailable");
   const release = (await response.json()).find((item) => item.release === recipe.version && (!item.repository || item.repository === officialRepository(env)) && item.cloudBuild !== false && !item.withdrawn);
-  const ref = release?.branch || release?.tag || release?.commit;
+  const ref = release?.commit || release?.branch || release?.tag;
   if (!ref || !/^[A-Za-z0-9._\/-]+$/.test(ref)) throw new Error("The selected Betaflight release has no safe source ref");
   if (recipe.sourceRef && recipe.sourceRef !== ref) throw new Error("The source ref does not match the selected Betaflight release");
   return ref;
 };
-const officialConfigRefFor = (version) => /^(4\.|2025\.)/.test(version) ? "18ffb2a74d388ccd6add5aff12b5b1398e0afd0a" : "";
+const officialConfigRefFor = async (env, sourceRef, version) => {
+  const sourceTree = await gitTree(env, officialRepository(env), sourceRef);
+  const pinnedSubmodule = sourceTree.find((item) => item.path === "src/config" && item.type === "commit")?.sha;
+  if (pinnedSubmodule && /^[a-f0-9]{40}$/.test(pinnedSubmodule)) return pinnedSubmodule;
+  const legacy45Config = String(env.BETAFLIGHT_45_CONFIG_REF || "18ffb2a74d388ccd6add5aff12b5b1398e0afd0a");
+  if (/^4\.5\./.test(version) && /^[a-f0-9]{40}$/.test(legacy45Config)) return legacy45Config;
+  throw new Error("The selected Betaflight release has no compatible pinned config source");
+};
+const supportsConfigBuild = (release) => {
+  const value = String(release || "");
+  const legacy = value.match(/^4\.(\d+)(?:\.|$)/);
+  return legacy ? Number(legacy[1]) >= 5 : /^20\d{2}\./.test(value);
+};
 
 const normalize = (input) => {
   if (!input || typeof input !== "object") throw new Error("Invalid build request");
+  const firmware = String(input.firmware || "kaack").toLowerCase();
   const version = String(input.version || "");
   const sourceRef = String(input.sourceRef || "");
   const target = String(input.target || "");
-  const flags = [...new Set((Array.isArray(input.flags) ? input.flags : []).flatMap((x) => String(x).split(/\s+/)).filter(Boolean))];
-  if (flags.some((flag) => /^USE_SERIALRX_/.test(flag)) && !flags.includes("USE_SERIALRX")) flags.push("USE_SERIALRX");
-  if (flags.some((flag) => /^USE_TELEMETRY_/.test(flag)) && !flags.includes("USE_TELEMETRY")) flags.push("USE_TELEMETRY");
-  flags.sort();
+  const rawFlags = (Array.isArray(input.flags) ? input.flags : []).flatMap((x) => String(x).split(/\s+/)).filter(Boolean);
+  if (rawFlags.some((flag) => !canonicalizeBuildDefine(flag))) throw new Error("Invalid custom build define");
+  const flags = expandBuildFlags(rawFlags, { firmware, version });
   if (!/^[A-Za-z0-9._-]+$/.test(version) || (sourceRef && !/^[A-Za-z0-9._\/-]+$/.test(sourceRef)) || !/^[A-Z0-9_-]+$/.test(target) || !flags.every(validToken)) throw new Error("Invalid version, source ref, target or build flag");
-  const firmware = String(input.firmware || "kaack").toLowerCase();
   if (!/^(kaack|betaflight)$/.test(firmware)) throw new Error("Invalid firmware line");
   return { firmware, version, sourceRef, target, flags, builderVersion: String(input.builderVersion || "0.2.0") };
 };
@@ -165,7 +184,7 @@ const gitTree = async (env, repository, ref) => {
 const sourceTargetIndex = async (env, ref, configuredConfigRef = "") => {
   const sourceTree = await gitTree(env, sourceRepository(env), ref);
   const classicTargets = sourceTree
-    .map((item) => item.path.match(/^src\/(?:platform|main)\/[^/]+\/target\/([^/]+)\/target\.mk$/)?.[1])
+    .map((item) => item.path.match(/^src\/(?:platform\/[^/]+\/target|main\/target)\/([^/]+)\/target\.mk$/)?.[1])
     .filter(Boolean)
     .map((target) => ({ target, manufacturer: "KAACK source target", group: "source" }));
   const configSubmodule = sourceTree.find((item) => item.path === "src/config" && item.type === "commit");
@@ -184,8 +203,8 @@ const officialReleases = async (env) => {
   const response = await fetch(`${upstream(env)}/api/releases`);
   if (!response.ok) throw new Error("Official Betaflight release catalog unavailable");
   return (await response.json())
-    .filter((item) => (!item.repository || item.repository === officialRepository(env)) && item.cloudBuild !== false && !item.withdrawn && (item.branch || item.tag || item.commit))
-    .map((item) => ({ ...item, label: `Betaflight ${item.release}`, ref: item.branch || item.tag || item.commit, cloudBuild: true }));
+    .filter((item) => (!item.repository || item.repository === officialRepository(env)) && item.cloudBuild !== false && !item.withdrawn && supportsConfigBuild(item.release) && (item.branch || item.tag || item.commit))
+    .map((item) => ({ ...item, label: `Betaflight ${item.release}`, ref: item.commit || item.branch || item.tag, cloudBuild: true }));
 };
 const officialTargets = async (env) => {
   const response = await fetch(`${upstream(env)}/api/targets`);
@@ -199,20 +218,23 @@ const enrichTargets = (targets, referenceTargets) => {
 const sourceCatalog = async (env) => {
   const releases = sourceRefs(env);
   if (!releases.length) throw new Error("Configure FIRMWARE_SOURCE_REFS for the selected firmware repository");
-  const refs = env.CATALOG_SOURCE_REF ? releases.filter((x) => x.ref === env.CATALOG_SOURCE_REF) : releases;
+  const refs = env.CATALOG_SOURCE_REF ? releases.filter((x) => x.ref === env.CATALOG_SOURCE_REF || x.buildRef === env.CATALOG_SOURCE_REF) : releases;
   if (!refs.length) throw new Error("CATALOG_SOURCE_REF is not one of the configured source refs");
-  const targetLists = await Promise.all(refs.map((x) => sourceTargets(env, x.ref, x.configRef)));
+  const targetLists = await Promise.all(refs.map((x) => sourceTargets(env, buildRefForEntry(x), x.configRef)));
   const targets = [...new Map(targetLists.flat().map((x) => [x.target, x])).values()].sort((a, b) => a.target.localeCompare(b.target));
   return { mode: "live", source: `github:${sourceRepository(env)}`, firmware: [{ id: "kaack", label: "KAACK Community" }, { id: "betaflight", label: "Betaflight" }], releases: releases.map((x) => ({ ...x, cloudBuild: true })), targets, options: DEFAULT_OPTIONS };
 };
 const validateAgainstSource = async (env, recipe) => {
   const ref = sourceRefFor(env, recipe);
-  const entry = sourceRefs(env).find((x) => x.ref === ref && x.release === recipe.version);
+  const entry = sourceRefs(env).find((x) => x.release === recipe.version);
+  const unsupported = (entry?.unsupportedFlags || []).filter((flag) => recipe.flags.includes(flag));
+  if (unsupported.length) throw new Error(`Selected options are not implemented by this KAACK source: ${unsupported.join(", ")}`);
   if (!(await sourceTargetExists(env, recipe.target, ref, entry?.configRef))) throw new Error("Target is not present in the selected KAACK source ref or its config repository");
   return { sourceRef: ref };
 };
 const validateAgainstCatalog = async (env, recipe) => {
   if (recipe.firmware === "kaack") return validateAgainstSource(env, recipe);
+  if (!supportsConfigBuild(recipe.version)) throw new Error("Betaflight releases before 4.5 require the legacy unified-target build path and are not supported");
   const targetResponse = await fetch(`${upstream(env)}/api/targets/${encodeURIComponent(recipe.target)}`);
   if (!targetResponse.ok) throw new Error("Target is not present in the upstream catalog");
   const detail = await targetResponse.json();
@@ -225,8 +247,8 @@ async function catalog(env) {
   if (sourceRepository(env)) {
     const [community, targets, releases] = await Promise.all([sourceCatalog(env), officialTargets(env), officialReleases(env)]);
     const communityTargets = enrichTargets(community.targets, targets);
-    const verifiedTargets = new Set(["HDZERO_HALO", "MAMBAF722_2022A", "MAMBAF722_2022B", "HGLRCF722MINI"]);
-    const communityLine = { id: "kaack", label: "KAACK Community", repository: sourceRepository(env), releases: community.releases, targets: communityTargets.map((item) => verifiedTargets.has(item.target) ? { ...item, group: "supported" } : item) };
+    const buildTestedTargets = new Set(["HDZERO_HALO", "MAMBAF722_2022A", "MAMBAF722_2022B", "HGLRCF722MINI"]);
+    const communityLine = { id: "kaack", label: "KAACK Community", repository: sourceRepository(env), releases: community.releases, targets: communityTargets.map((item) => buildTestedTargets.has(item.target) ? { ...item, group: "build-tested" } : item) };
     const officialLine = { id: "betaflight", label: "Betaflight", repository: officialRepository(env), releases, targets };
     return { mode: "live", source: { betaflight: `github:${officialRepository(env)}`, kaack: `github:${sourceRepository(env)}` }, firmware: [{ id: "kaack", label: "KAACK Community" }, { id: "betaflight", label: "Betaflight" }], firmwareLines: [communityLine, officialLine], releases: community.releases, targets: communityLine.targets, options: DEFAULT_OPTIONS };
   }
@@ -242,7 +264,7 @@ async function catalog(env) {
 }
 async function targetCatalog(env, target, firmware) {
   if (sourceRepository(env) && firmware !== "betaflight") {
-    const releases = (await Promise.all(sourceRefs(env).map(async (entry) => (await sourceTargetExists(env, target, entry.ref, entry.configRef)) ? { ...entry, cloudBuild: true } : null))).filter(Boolean);
+    const releases = (await Promise.all(sourceRefs(env).map(async (entry) => (await sourceTargetExists(env, target, buildRefForEntry(entry), entry.configRef)) ? { ...entry, cloudBuild: true } : null))).filter(Boolean);
     return { target, releases };
   }
   const response = await fetch(`${upstream(env)}/api/targets/${encodeURIComponent(target)}`);
@@ -258,7 +280,7 @@ async function dispatch(env, recipe, id) {
   const sourceRef = recipe.firmware === "kaack" ? sourceRefFor(env, recipe) : await officialRefFor(env, recipe);
   const sourceEntry = recipe.firmware === "kaack" ? sourceRefs(env).find((entry) => entry.release === recipe.version) : null;
   const path = `/repos/${env.GITHUB_REPOSITORY}/actions/workflows/build-firmware.yml/dispatches`;
-  const configRef = sourceEntry?.configRef || (recipe.firmware === "betaflight" ? officialConfigRefFor(recipe.version) : "");
+  const configRef = sourceEntry?.configRef || (recipe.firmware === "betaflight" ? await officialConfigRefFor(env, sourceRef, recipe.version) : "");
   await gh(env, path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ref: env.GITHUB_REF || "main", inputs: { build_id: id, firmware_line: recipe.firmware, version: recipe.version, source_ref: sourceRef, config_ref: configRef, target: recipe.target, flags_json: JSON.stringify(recipe.flags) } }) });
   return { id, mode: "github-actions", status: "queued", cacheKey: await cacheKey({ ...recipe, sourceRef }), message: "Workflow dispatched. Polling GitHub Actions for the build result." };
 }
@@ -270,7 +292,7 @@ async function buildStatus(env, id) {
   if (run.conclusion !== "success") return { id, mode: "github-actions", status: "failure", message: `Workflow finished with ${run.conclusion || "unknown"}.`, workflowUrl: run.html_url };
   const artifacts = await gh(env, `/repos/${env.GITHUB_REPOSITORY}/actions/runs/${run.id}/artifacts`);
   const artifact = artifacts.artifacts?.find((x) => x.name === `kaack-${id}`) || artifacts.artifacts?.[0];
-  return { id, mode: "github-actions", status: "success", message: env.FIRMWARE_BUCKET ? "Build finished. Download the verified firmware file." : "Build finished. Download the GitHub Actions artifact ZIP and verify its manifest.", downloadFormat: env.FIRMWARE_BUCKET ? "firmware" : "zip", workflowUrl: run.html_url, downloadUrl: `/api/builds/${id}/download`, artifactName: artifact?.name };
+  return { id, mode: "github-actions", status: "success", message: env.FIRMWARE_BUCKET ? "Build finished. Download the structurally checked firmware file." : "Build finished. Download the GitHub Actions artifact ZIP and verify its manifest.", downloadFormat: env.FIRMWARE_BUCKET ? "firmware" : "zip", workflowUrl: run.html_url, downloadUrl: `/api/builds/${id}/download`, artifactName: artifact?.name };
 }
 async function downloadFirmware(env, id) {
   if (env.FIRMWARE_BUCKET) {
@@ -333,3 +355,5 @@ export default { async fetch(request, env) {
     return json({ error: error.message || "Unexpected worker error" }, 500);
   }
 } };
+
+export { normalize, optionsForRelease };
